@@ -155,7 +155,7 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 .ed-toolbar{height:38px;min-height:38px;padding:0 12px;display:flex;align-items:center;gap:8px;background:var(--bg-main);border-bottom:1px solid var(--border);flex-shrink:0}
 .ed-toolbar .fn{font-size:var(--fs-sm);font-weight:600;color:var(--text2);flex-shrink:0;line-height:38px}
 .ed-toolbar .sp{flex:1}
-.ed-toolbar .sz-label{font-size:var(--fs-xs);color:var(--text3)}
+.ed-toolbar .sz-lbl{font-size:var(--fs-xs);color:var(--text3);min-width:16px;text-align:center}
 .ed-toolbar .sz-btn{width:26px;height:26px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all var(--trans)}
 .ed-toolbar .sz-btn:hover{background:var(--bg-hover);color:var(--text2)}
 .ed-toolbar button{padding:5px 14px;border-radius:6px;border:none;font-size:var(--fs-sm);font-weight:600;cursor:pointer;font-family:var(--font);min-height:28px;transition:all var(--trans)}

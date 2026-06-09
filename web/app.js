@@ -131,7 +131,7 @@ $("#font-up").onclick=()=>setGlobalSize(Math.min(20,globalSize+1));
 $("#font-dn").onclick=()=>setGlobalSize(Math.max(10,globalSize-1));
 function setCodeSize(sz){
   codeSize=sz;document.documentElement.style.setProperty('--editor-size',sz+'px');
-  $("#code-lbl").textContent=sz+'px';$("#code-lbl2").textContent=sz+'px';
+  $("#code-lbl").textContent=sz;$("#code-lbl2").textContent=sz+'px';
   localStorage.setItem('c-cs',sz);
 }
 $("#code-up").onclick=()=>setCodeSize(Math.min(22,codeSize+1));
