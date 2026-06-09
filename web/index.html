@@ -1,280 +1,96 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>C 语言学习平台</title>
-<style>
-/* ============================================================
-   C Learn — 纯本地运行 · 零外部依赖 · 即学即写
-   ============================================================ */
-:root {
-  --bg-body:#1a1b2e;--bg-side:#1e1f36;--bg-main:#232440;
-  --bg-card:#28294a;--bg-editor:#1a1b30;--bg-out:#1e1f36;
-  --bg-hover:#2e2f52;--border:#353659;
-  --accent:#6C8CFF;--accent2:#8BA3FF;
-  --green:#4ECB71;--red:#FF6B7A;--amber:#FFB347;
-  --text:#e8e9f0;--text2:#b8b9cc;--text3:#7c7d99;
-  --radius:10px;--font:'Microsoft YaHei UI','PingFang SC','Segoe UI',system-ui,sans-serif;
-  --mono:'Consolas','Courier New',monospace;
-  --editor-size:14px;--global-size:14px;
-}
-.theme-purple{--accent:#A78BFA;--accent2:#C4B5FD}
-.theme-cyan{--accent:#22D3EE;--accent2:#67E8F9}
-.theme-amber{--accent:#FBBF24;--accent2:#FCD34D;--green:#10B981}
-.theme-rose{--accent:#FB7185;--accent2:#FDA4AF}
-body.light{
-  --bg-body:#f1f5f9;--bg-side:#e2e8f0;--bg-main:#fff;
-  --bg-card:#f8fafc;--bg-editor:#f8fafc;--bg-out:#f8fafc;
-  --bg-hover:#e2e8f0;--border:#cbd5e1;
-  --text:#1e293b;--text2:#475569;--text3:#94a3b8;
-}
-
-*{margin:0;padding:0;box-sizing:border-box}
-body{
-  font-family:var(--font);font-size:var(--global-size);
-  background:var(--bg-body);color:var(--text);
-  height:100vh;overflow:hidden;display:flex;flex-direction:column;
-}
-
-/* ── Topbar ─────────────────────────────── */
-#topbar{height:40px;min-height:40px;background:var(--bg-side);display:flex;align-items:center;padding:0 10px;gap:8px;border-bottom:1px solid var(--border);user-select:none;z-index:10}
-#topbar .logo{font-weight:700;font-size:14px;color:var(--accent);white-space:nowrap}
-#topbar .logo em{font-weight:400;font-size:10px;color:var(--text3);font-style:normal;margin-left:4px}
-#topbar .modes{display:flex;gap:2px;background:var(--bg-body);border-radius:8px;padding:2px}
-#topbar .modes button{border:none;background:none;color:var(--text3);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:var(--font);transition:all .15s}
-#topbar .modes button.on{background:var(--accent);color:#fff}
-#topbar .gap{flex:1}
-#topbar .stat{font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;white-space:nowrap}
-#topbar .stat b{color:var(--accent)}
-#topbar .mini-bar{width:36px;height:3px;background:var(--bg-hover);border-radius:2px;overflow:hidden}
-#topbar .mini-bar i{display:block;height:100%;background:var(--green);border-radius:2px}
-#topbar .ctrl{display:flex;align-items:center;gap:3px}
-#topbar .ctrl span{font-size:9px;color:var(--text3)}
-#topbar .ctrl button{width:20px;height:20px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
-#topbar .ctrl button:hover{background:var(--bg-hover)}
-#topbar .theme-dot{width:12px;height:12px;border-radius:50%;cursor:pointer;border:2px solid transparent}
-#topbar .theme-dot.on{border-color:var(--text)}
-
-/* ── 三栏 ───────────────────────────────── */
-#main{flex:1;display:flex;overflow:hidden}
-#sidebar{background:var(--bg-side);display:flex;flex-direction:column;overflow:hidden}
-#center{background:var(--bg-main);overflow-y:auto;padding:20px 24px 32px}
-#right{display:flex;flex-direction:column;border-left:1px solid var(--border);overflow:hidden}
-.grip{width:8px;min-width:8px;cursor:col-resize;flex-shrink:0;z-index:20;background:transparent;position:relative}
-.grip:hover,.grip.on{background:var(--accent)}
-.grip::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:30px;border-radius:1px;background:var(--text3)}
-
-/* ── 侧栏 ───────────────────────────────── */
-.side-hd{padding:10px 12px 8px;font-size:11px;font-weight:700;color:var(--text3);display:flex;justify-content:space-between;border-bottom:1px solid var(--border)}
-.side-scroll{flex:1;overflow-y:auto;padding:4px 0}
-.chapter{margin:2px 6px;border-radius:8px;background:var(--bg-main);overflow:hidden}
-.chapter+.chapter{margin-top:6px}
-.ch-head{padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text2)}
-.ch-head:hover{background:var(--bg-hover)}
-.ch-head .arr{font-size:8px;color:var(--text3)}
-.ch-head.fold .arr{transform:rotate(-90deg)}
-.ch-head .prog{font-size:9px;color:var(--accent)}
-.ch-head .prog.done{color:var(--green)}
-.lesson{padding:6px 10px 6px 22px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
-.lesson:hover{background:var(--bg-hover)}
-.lesson.cur{background:var(--bg-hover);color:var(--accent2);border-left:3px solid var(--accent);padding-left:19px}
-.lesson .ico{width:12px;text-align:center;font-size:9px;flex-shrink:0}
-.lesson .ico.done{color:var(--green)}
-.ex-item{padding:6px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
-.ex-item:hover{background:var(--bg-hover)}
-.ex-item.cur{background:var(--bg-hover);color:var(--accent2);border-left:3px solid var(--accent);padding-left:7px}
-.ex-item .dot{font-size:6px}
-.ex-item .dot.easy{color:var(--green)}.ex-item .dot.med{color:var(--amber)}.ex-item .dot.hard{color:var(--red)}
-.flt-row{display:flex;gap:3px;padding:5px 10px}
-.flt-row button{flex:1;padding:3px;border-radius:5px;border:1px solid var(--border);font-size:9px;cursor:pointer;font-family:var(--font);background:transparent;color:var(--text3)}
-.flt-row button.on{background:var(--accent);color:#fff}
-
-/* ── 内容区 ─────────────────────────────── */
-#center h1{font-size:1.3em;margin-bottom:10px;font-weight:700}
-#center h2{font-size:1.1em;margin:18px 0 8px}
-#center h3{font-size:1em;margin:12px 0 4px}
-#center p{line-height:1.8;color:var(--text2);margin-bottom:8px}
-#center code{font-family:var(--mono);font-size:.9em;background:var(--bg-hover);padding:1px 5px;border-radius:3px;color:var(--accent2)}
-#center pre{background:var(--bg-editor);border-radius:8px;padding:10px;font-family:var(--mono);font-size:.85em;line-height:1.6;overflow-x:auto;margin:8px 0 14px;border:1px solid var(--border)}
-#center ul,#center ol{margin:6px 0 12px 20px;color:var(--text2);line-height:1.9}
-#center table{width:100%;border-collapse:collapse;margin:12px 0}
-#center th,#center td{padding:6px 10px;border:1px solid var(--border)}
-#center th{background:var(--bg-hover)}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;color:#fff}
-.badge.easy{background:var(--green)}.badge.medium,.badge.med{background:var(--amber);color:#1a1a2e}
-.badge.hard{background:var(--red)}.badge.ok{background:var(--green)}.badge.no{background:var(--red)}
-.lesson-nav{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
-.lesson-nav button{padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text2);cursor:pointer;font-size:12px;font-family:var(--font)}
-.lesson-nav button:hover{background:var(--bg-hover);border-color:var(--accent)}
-.lesson-nav button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
-
-/* ── 编辑器 ─────────────────────────────── */
-.ed-toolbar{height:36px;padding:0 10px;display:flex;align-items:center;gap:6px;background:var(--bg-main);border-bottom:1px solid var(--border);flex-shrink:0}
-.ed-toolbar .fn{font-size:11px;font-weight:600;color:var(--text2)}
-.ed-toolbar .sp{flex:1}
-.ed-toolbar .sz-btn{width:20px;height:20px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
-.ed-toolbar .sz-btn:hover{background:var(--bg-hover)}
-.ed-toolbar button{padding:4px 12px;border-radius:5px;border:none;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)}
-.btn-run{background:var(--accent);color:#fff;font-size:12px;padding:5px 16px}
-.btn-run:hover{background:var(--accent2)}
-.btn-sub{background:var(--green);color:#fff}
-.btn-sub:hover{background:#5de07e}
-.btn-g{background:transparent;color:var(--text3)}
-.btn-g:hover{background:var(--bg-hover);color:var(--text2)}
-
-/* 编辑器容器 (textarea + line numbers) */
-.editor-box{flex:1;display:flex;overflow:hidden;background:var(--bg-editor);position:relative}
-.editor-box .gutter{
-  width:44px;background:var(--bg-editor);color:var(--text3);
-  font-family:var(--mono);font-size:var(--editor-size);line-height:1.65;
-  text-align:right;padding:10px 8px 10px 4px;overflow:hidden;user-select:none;
-  border-right:1px solid var(--border);flex-shrink:0;
-  white-space:pre;
-}
-.editor-box textarea{
-  flex:1;background:var(--bg-editor);color:var(--text);
-  font-family:var(--mono);font-size:var(--editor-size);line-height:1.65;
-  border:none;outline:none;resize:none;padding:10px 12px;
-  tab-size:4;white-space:pre;overflow:auto;
-}
-#run-dot{position:absolute;top:6px;right:10px;z-index:10;padding:2px 8px;border-radius:4px;font-size:10px;font-family:var(--font);font-weight:600;pointer-events:none;opacity:0;transition:opacity .3s}
-#run-dot.on{opacity:1}
-#run-dot.ok{background:#166534;color:var(--green)}
-#run-dot.no{background:#7f1d1d;color:var(--red)}
-
-/* ── 变量面板 ───────────────────────────── */
-#var-panel{background:var(--bg-card);border-top:1px solid var(--border);max-height:120px;overflow-y:auto;display:none;flex-shrink:0}
-#var-panel.on{display:block}
-#var-panel .vh{padding:4px 12px;font-size:10px;font-weight:700;color:var(--text3);display:flex;justify-content:space-between;border-bottom:1px solid var(--border)}
-#var-panel .vl{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px}
-#var-panel .vi{padding:3px 8px;border-radius:4px;background:var(--bg-hover);font-family:var(--mono);font-size:10px;display:flex;gap:5px}
-#var-panel .vi .vt{color:var(--accent2);font-weight:600}
-#var-panel .vi .vn{color:var(--text)}
-#var-panel .vi .vv{color:var(--green)}
-
-/* ── 输出区 ─────────────────────────────── */
-#output-pane{min-height:100px;height:160px;background:var(--bg-out);border-top:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
-.out-hd{padding:4px 12px;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text3);border-bottom:1px solid var(--border)}
-.out-hd .otab{padding:2px 8px;border-radius:3px;cursor:pointer;border:none;background:none;color:var(--text3);font-size:9px;font-family:var(--font)}
-.out-hd .otab.on{background:var(--accent);color:#fff}
-#out-body{flex:1;padding:10px 14px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.6;white-space:pre-wrap;color:var(--text2);word-break:break-all}
-#out-body .ok-big{font-size:1.4em;font-weight:700;color:var(--green);text-align:center;padding:12px;font-family:var(--font)}
-#out-body .no-big{font-size:1.4em;font-weight:700;color:var(--red);text-align:center;padding:12px;font-family:var(--font)}
-#out-body .case-ok{color:var(--green)}#out-body .case-no{color:var(--red)}
-#out-body .erlink{color:var(--accent2);text-decoration:underline;cursor:pointer}
-#out-body .s{color:var(--text3);font-size:10px}
-#out-body .hint{color:var(--amber)}
-
-/* ── 可视化面板 ─────────────────────────── */
-#viz-panel{display:none;flex:1;flex-direction:column;overflow:hidden}
-#viz-panel.on{display:flex}
-#viz-tb{display:flex;gap:6px;padding:8px 14px;background:var(--bg-side);border-bottom:1px solid var(--border);align-items:center}
-#viz-tb .vt{font-weight:700;font-size:12px;color:var(--accent)}
-#viz-body{flex:1;display:flex;overflow:hidden}
-#viz-left{flex:1;display:flex;flex-direction:column;min-width:260px;border-right:1px solid var(--border)}
-#viz-editor-box{flex:1;overflow:hidden;display:flex;background:var(--bg-editor);position:relative}
-#viz-editor-box .gutter{width:40px;background:var(--bg-editor);color:var(--text3);font-family:var(--mono);font-size:12px;line-height:1.6;text-align:right;padding:8px 6px 8px 2px;overflow:hidden;user-select:none;border-right:1px solid var(--border);flex-shrink:0;white-space:pre}
-#viz-editor-box .gutter .hl{color:var(--accent);font-weight:700}
-#viz-editor-box .code{flex:1;font-family:var(--mono);font-size:12px;line-height:1.6;padding:8px 10px;white-space:pre;overflow:auto;color:var(--text);background:var(--bg-editor)}
-#viz-editor-box .code .hl{background:rgba(108,140,255,.2);display:block;margin:0 -10px;padding:0 10px}
-#viz-hints{max-height:100px;overflow-y:auto;padding:6px 12px;background:var(--bg-card);border-top:1px solid var(--border);font-size:10px;color:var(--text2);line-height:1.7}
-#viz-right{flex:1;display:flex;flex-direction:column;min-width:280px;background:var(--bg-card)}
-#viz-mem-hd{padding:6px 12px;font-size:10px;font-weight:700;color:var(--text3);border-bottom:1px solid var(--border)}
-#viz-memory{flex:1;overflow:auto;padding:6px}
-#viz-ctrl{border-top:1px solid var(--border);padding:6px 12px}
-#viz-ctrl .row{display:flex;gap:4px;margin-bottom:6px}
-#viz-output{background:var(--bg-editor);border-radius:6px;padding:6px 10px;font-family:var(--mono);font-size:11px;min-height:50px;max-height:80px;overflow:auto;color:var(--text2);white-space:pre-wrap}
-
-/* ── 欢迎页 ─────────────────────────────── */
-.welcome{text-align:center;padding:8px 0 0}
-.welcome .emoji{font-size:2.5em;margin-bottom:6px}
-.welcome h1{font-size:1.5em}
-.welcome .sub{color:var(--text3);margin-bottom:16px}
-.stat-row{display:flex;gap:10px;margin:14px 0}
-.stat-card{flex:1;padding:12px;border-radius:8px;background:var(--bg-card);border:1px solid var(--border);text-align:center}
-.stat-card .val{font-size:1.6em;font-weight:700;color:var(--accent)}
-.stat-card .lbl{font-size:10px;color:var(--text3);margin-top:3px}
-.step{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);color:var(--text2);font-size:12px;line-height:1.6}
-.step .n{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
-.start-btn{display:block;margin:20px auto;padding:10px 30px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-size:1em;font-weight:700;cursor:pointer;font-family:var(--font)}
-.start-btn:hover{background:var(--accent2);transform:translateY(-1px)}
-
-.toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:10px 20px;border-radius:8px;font-size:12px;font-weight:600;color:#fff;animation:in .3s ease}
-@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.toast.ok{background:var(--green)}.toast.err{background:var(--red)}.toast.warn{background:var(--amber);color:#1a1a2e}
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--bg-hover);border-radius:2px}
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
-<body class="">
+<body>
 
+<!-- ═══════════════════ TOPBAR ═══════════════════ -->
 <div id="topbar">
+  <button id="btn-sidebar" title="切换侧栏 (Ctrl+B)">☰</button>
   <div class="logo">C 语言学习<em>即学即写</em></div>
+  <div class="sep"></div>
   <div class="modes">
-    <button class="on" data-mode="learn">学习</button>
-    <button data-mode="practice">练习</button>
-    <button data-mode="visualize">可视化</button>
+    <button class="on" data-mode="learn">📖 学习</button>
+    <button data-mode="practice">💻 练习</button>
+    <button data-mode="visualize">🔍 可视化</button>
   </div>
   <div class="gap"></div>
-  <div class="ctrl"><span>字体</span><button id="font-dn">-</button><span id="font-lbl">14px</span><button id="font-up">+</button></div>
+  <div class="ctrl-group"><span>界面</span><button id="font-dn">−</button><span id="font-lbl">14px</span><button id="font-up">+</button></div>
+  <div class="sep"></div>
+  <div class="ctrl-group"><span>代码</span><button id="code-dn2">−</button><span id="code-lbl2">14px</span><button id="code-up2">+</button></div>
+  <div class="sep"></div>
   <div class="stat">已学 <b id="done-n">0</b> 课<div class="mini-bar"><i id="mini-f" style="width:0%"></i></div></div>
-  <span class="theme-dot on" id="td-d" style="background:var(--accent)" onclick="setAccent('default')"></span>
-  <span class="theme-dot" id="td-p" style="background:#A78BFA" onclick="setAccent('purple')"></span>
-  <span class="theme-dot" id="td-c" style="background:#22D3EE" onclick="setAccent('cyan')"></span>
-  <span class="theme-dot" id="td-a" style="background:#FBBF24" onclick="setAccent('amber')"></span>
-  <span class="theme-dot" id="td-r" style="background:#FB7185" onclick="setAccent('rose')"></span>
-  <button class="ctrl" style="width:24px;height:24px;cursor:pointer" id="btn-light" title="亮暗切换">☀️</button>
+  <span class="theme-dot on" id="td-d" style="background:var(--accent)" onclick="setAccent('default')" title="默认蓝色"></span>
+  <span class="theme-dot" id="td-p" style="background:#A78BFA" onclick="setAccent('purple')" title="紫色"></span>
+  <span class="theme-dot" id="td-c" style="background:#22D3EE" onclick="setAccent('cyan')" title="青色"></span>
+  <span class="theme-dot" id="td-a" style="background:#FBBF24" onclick="setAccent('amber')" title="琥珀"></span>
+  <span class="theme-dot" id="td-r" style="background:#FB7185" onclick="setAccent('rose')" title="玫瑰"></span>
+  <button id="btn-light" title="亮暗切换">☀️</button>
+  <button id="btn-help" title="使用帮助">❓</button>
 </div>
 
+<!-- ═══════════════════ MAIN LAYOUT ═══════════════════ -->
 <div id="main">
   <div id="sidebar">
     <div class="side-hd"><span id="side-title">课程</span><span id="side-num"></span></div>
     <div class="side-scroll" id="side-inner"></div>
   </div>
-  <div class="grip" id="grip1"></div>
+  <div class="grip" id="grip1" data-left="sidebar" data-right="center"></div>
   <div id="center"></div>
-  <div class="grip" id="grip2"></div>
+  <div class="grip" id="grip2" data-left="center" data-right="right"></div>
   <div id="right">
+    <!-- Editor Toolbar -->
     <div class="ed-toolbar">
       <span class="fn">main.c</span><span class="sp"></span>
-      <span style="font-size:9px;color:var(--text3)">代码字体</span>
-      <button class="sz-btn" id="code-dn">-</button>
-      <span style="font-size:9px;color:var(--text3)" id="code-lbl">14px</span>
-      <button class="sz-btn" id="code-up">+</button>
+      <span class="sz-label">代码字体</span>
+      <button class="sz-btn" id="code-dn">−</button><span class="sz-label" id="code-lbl">14px</span><button class="sz-btn" id="code-up">+</button>
       <span class="sp"></span>
-      <button class="btn-g" id="btn-inspect">变量</button>
-      <button class="btn-g" id="btn-reset" style="display:none">重置</button>
-      <button class="btn-sub" id="btn-submit" style="display:none">提交</button>
+      <div class="history-wrap"><button class="btn-g" id="btn-history">🕐 历史</button><div class="history-menu" id="history-menu"></div></div>
+      <button class="btn-g" id="btn-inspect">🔍 变量</button>
+      <button class="btn-g" id="btn-reset" style="display:none">↺ 重置</button>
+      <button class="btn-sub" id="btn-submit" style="display:none">✓ 提交</button>
       <button class="btn-run" id="btn-run">▶ 运行</button>
     </div>
+
+    <!-- Editor -->
     <div class="editor-box" id="editor-wrap">
       <div class="gutter" id="gutter"></div>
-      <textarea id="code-input" spellcheck="false"></textarea>
+      <div class="editor-inner">
+        <pre id="highlight-layer"><code id="hl-code"></code></pre>
+        <textarea id="code-input" spellcheck="false" placeholder="在此编写 C 代码..."></textarea>
+      </div>
       <div id="run-dot"></div>
     </div>
-    <div id="var-panel">
-      <div class="vh"><span>变量检查器</span><span style="cursor:pointer" id="var-close">x</span></div>
-      <div class="vl" id="var-list"></div>
-    </div>
+
+    <!-- Variable Inspector -->
+    <div id="var-panel"><div class="vh"><span>变量检查器</span><span id="var-close">✕</span></div><div class="vl" id="var-list"></div></div>
+
+    <!-- Vertical grip -->
+    <div class="grip-v" id="grip-out" data-left="editor-wrap" data-right="output-pane"></div>
+
+    <!-- Stdin -->
+    <div id="stdin-bar"><span>📥 输入</span><textarea id="stdin-input" placeholder="程序输入 (scanf)..." rows="1"></textarea></div>
+
+    <!-- Output -->
     <div id="output-pane">
-      <div class="out-hd">
-        <span>输出</span><span class="sp" style="flex:1"></span>
-        <button class="otab on" data-tab="out">运行结果</button>
-        <button class="otab" data-tab="judge" style="display:none">判题</button>
-      </div>
+      <div class="out-hd"><span>输出</span><span class="sp" style="flex:1"></span><button class="otab on" data-tab="out">运行结果</button><button class="otab" data-tab="judge" style="display:none">判题</button><button class="otab" id="tab-clear">✕</button></div>
       <div id="out-body">点击 <b style="color:var(--accent)">▶ 运行</b> 查看程序输出</div>
     </div>
   </div>
 
-  <!-- 可视化面板 -->
+  <!-- ═══════════════════ VISUALIZATION ═══════════════════ -->
   <div id="viz-panel">
     <div id="viz-tb">
-      <span class="vt">代码可视化</span><span class="gap" style="flex:1"></span>
-      <button class="btn-g" id="viz-ex1" style="font-size:10px">例1:指针</button>
-      <button class="btn-g" id="viz-ex2" style="font-size:10px">例2:函数</button>
-      <button class="btn-g" id="viz-ex3" style="font-size:10px">例3:数组</button>
-      <button class="btn-run" id="viz-load" style="font-size:10px;padding:4px 10px">加载代码</button>
+      <span class="vt">🔍 代码可视化</span><span class="gap" style="flex:1"></span>
+      <button class="btn-g" id="viz-ex1">例1:指针</button>
+      <button class="btn-g" id="viz-ex2">例2:函数</button>
+      <button class="btn-g" id="viz-ex3">例3:数组</button>
+      <button class="btn-g" id="viz-custom">📝 自写代码</button>
+      <button class="btn-run" id="viz-load">加载代码</button>
     </div>
     <div id="viz-body">
       <div id="viz-left">
@@ -282,17 +98,17 @@ body{
           <div class="gutter" id="viz-gutter"></div>
           <div class="code" id="viz-code"></div>
         </div>
-        <div id="viz-hints"></div>
+        <div id="viz-hints">点击 <b>加载代码</b> 或选择一个示例开始</div>
       </div>
       <div id="viz-right">
-        <div id="viz-mem-hd">内存 / 变量表</div>
+        <div id="viz-mem-hd">📊 内存 / 变量表</div>
         <div id="viz-memory"></div>
         <div id="viz-ctrl">
           <div class="row">
-            <button class="btn-g" id="viz-prev">上一步</button>
-            <button class="btn-run" id="viz-next" style="font-size:11px;padding:5px 14px">下一步</button>
-            <button class="btn-g" id="viz-reset">重置</button>
-            <button class="btn-sub" id="viz-runall">运行到底</button>
+            <button class="btn-g" id="viz-prev">◂ 上一步</button>
+            <button class="btn-run" id="viz-next">▶ 下一步</button>
+            <button class="btn-g" id="viz-reset">↺ 重置</button>
+            <button class="btn-sub" id="viz-runall">⏩ 运行到底</button>
           </div>
           <div id="viz-output"></div>
         </div>
@@ -301,419 +117,42 @@ body{
   </div>
 </div>
 
-<script>
-// ============================================================
-// C Learn — 纯本地 JS · 零外部依赖
-// ============================================================
-const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-const API="http://127.0.0.1:8765";
-let mode="learn",curMod=null,curEx=null,globalSize=14,codeSize=14;
-let modules=[],exercises=[],progress={};
+<!-- ═══════════════════ ONBOARDING OVERLAY ═══════════════════ -->
+<div id="onboard-overlay">
+  <div id="onboard-card">
+    <div class="onboard-step" id="ob-step-0">
+      <div class="ob-emoji">🎓</div>
+      <h2>欢迎来到 C 语言学习平台！</h2>
+      <p>即学即写 · 学写结合 — 让我们一起开始 C 语言学习之旅</p>
+      <div class="ob-stats" id="ob-stats"></div>
+    </div>
+    <div class="onboard-step" id="ob-step-1" style="display:none">
+      <div class="ob-emoji">📖</div>
+      <h2>左侧：课程与练习</h2>
+      <p>浏览系统化的 C 语言课程，或从 144+ 道练习题中选择挑战</p>
+      <p class="ob-hint">点击顶部 <b>学习</b>/<b>练习</b> 按钮切换模式</p>
+    </div>
+    <div class="onboard-step" id="ob-step-2" style="display:none">
+      <div class="ob-emoji">💻</div>
+      <h2>右侧：代码编辑器</h2>
+      <p>在这里编写 C 代码，支持语法高亮和自动缩进</p>
+      <p class="ob-hint"><b>Ctrl+Enter</b> 运行代码 · <b>Tab</b> 缩进 · <b>Ctrl+B</b> 切换侧栏</p>
+    </div>
+    <div class="onboard-step" id="ob-step-3" style="display:none">
+      <div class="ob-emoji">🔍</div>
+      <h2>可视化模式</h2>
+      <p>逐行执行代码，观察内存和变量的变化 — 理解指针和内存的利器</p>
+      <p class="ob-hint">切换到 <b>可视化</b> 模式，加载示例代码体验</p>
+    </div>
+    <div class="onboard-nav">
+      <button id="ob-prev" style="visibility:hidden">← 上一步</button>
+      <div class="ob-dots" id="ob-dots"></div>
+      <button id="ob-next">下一步 →</button>
+      <button id="ob-done" style="display:none">开始学习！</button>
+    </div>
+  </div>
+</div>
 
-// ── 编辑器 (纯 textarea + gutter) ──────────────
-const codeInput=$("#code-input");
-const gutter=$("#gutter");
-codeInput.value='#include <stdio.h>\n\nint main() {\n    printf("Hello!\\n");\n    return 0;\n}\n';
-
-function updateGutter(){
-  const lines=codeInput.value.split('\n');
-  gutter.innerHTML=lines.map((_,i)=>i+1).join('\n');
-}
-function syncScroll(){
-  gutter.scrollTop=codeInput.scrollTop;
-}
-codeInput.addEventListener('scroll',syncScroll);
-codeInput.addEventListener('input',updateGutter);
-codeInput.addEventListener('keydown',e=>{
-  if(e.key==='Tab'){e.preventDefault();const s=codeInput.selectionStart;codeInput.value=codeInput.value.slice(0,s)+'    '+codeInput.value.slice(s);codeInput.selectionStart=codeInput.selectionEnd=s+4}
-});
-updateGutter();
-
-function getCode(){return codeInput.value}
-function setCode(c){codeInput.value=c;updateGutter()}
-
-// ── 全局字体 ──────────────────────────────────
-function setGlobalSize(sz){
-  globalSize=sz;document.documentElement.style.setProperty('--global-size',sz+'px');
-  $("#font-lbl").textContent=sz+'px';localStorage.setItem('c-gs',sz);
-}
-$("#font-up").onclick=()=>setGlobalSize(Math.min(20,globalSize+1));
-$("#font-dn").onclick=()=>setGlobalSize(Math.max(10,globalSize-1));
-
-// ── 代码字体 ──────────────────────────────────
-function setCodeSize(sz){
-  codeSize=sz;document.documentElement.style.setProperty('--editor-size',sz+'px');
-  codeInput.style.fontSize=sz+'px';gutter.style.fontSize=sz+'px';
-  $("#code-lbl").textContent=sz+'px';localStorage.setItem('c-cs',sz);
-}
-$("#code-up").onclick=()=>setCodeSize(Math.min(22,codeSize+1));
-$("#code-dn").onclick=()=>setCodeSize(Math.max(10,codeSize-1));
-
-// ── 主题 ──────────────────────────────────────
-let accent='default';
-window.setAccent=function(a){
-  accent=a;document.body.classList.remove('theme-purple','theme-cyan','theme-amber','theme-rose');
-  if(a!=='default')document.body.classList.add('theme-'+a);
-  $$("#topbar .theme-dot").forEach(d=>d.classList.toggle("on",(a==='default'&&d.id==='td-d')||d.id==='td-'+a[0]));
-  localStorage.setItem('c-ac',a);
-};
-$("#btn-light").onclick=()=>{
-  document.body.classList.toggle('light');
-  const on=document.body.classList.contains('light');
-  $("#btn-light").textContent=on?'🌙':'☀️';
-  localStorage.setItem('c-lt',on?'1':'0');
-};
-
-// ── 三栏拖拽 ──────────────────────────────────
-function makeResizable(gripId,leftId,rightId){
-  const grip=$(gripId),left=$(leftId),right=$(rightId);
-  let on=false,sx,sl,sr;
-  grip.addEventListener('mousedown',e=>{
-    e.preventDefault();e.stopPropagation();on=true;sx=e.clientX;
-    sl=left.getBoundingClientRect().width;sr=right.getBoundingClientRect().width;
-    grip.classList.add('on');document.body.style.cursor='col-resize';document.body.style.userSelect='none';
-  });
-  window.addEventListener('mousemove',e=>{
-    if(!on)return;const dx=e.clientX-sx;
-    left.style.width=Math.max(140,Math.min(500,sl+dx))+'px';left.style.flex='none';
-    right.style.width=Math.max(200,sr-dx)+'px';right.style.flex='none';
-  });
-  window.addEventListener('mouseup',()=>{
-    if(!on)return;on=false;grip.classList.remove('on');document.body.style.cursor='';document.body.style.userSelect='';
-    localStorage.setItem('c-'+leftId,parseInt(left.style.width)||240);
-    localStorage.setItem('c-'+rightId,parseInt(right.style.width)||400);
-  });
-}
-function initLayout(){
-  const total=$("#main").getBoundingClientRect().width;
-  const sw=parseInt(localStorage.getItem('c-sidebar'))||220;
-  const cw=parseInt(localStorage.getItem('c-center'))||Math.round(total*0.3);
-  const rw=Math.max(300,total-sw-cw-10);
-  $("#sidebar").style.cssText=`width:${sw}px;flex:none`;
-  $("#center").style.cssText=`width:${cw}px;flex:none`;
-  $("#right").style.cssText=`width:${rw}px;flex:none`;
-}
-// Delay layout init to ensure DOM is fully rendered
-setTimeout(()=>{
-  initLayout();
-  makeResizable('#grip1','sidebar','center');
-  makeResizable('#grip2','center','right');
-},100);
-window.addEventListener('resize',()=>{
-  const total=$("#main").getBoundingClientRect().width;
-  const sw=$("#sidebar").getBoundingClientRect().width;
-  const cw=$("#center").getBoundingClientRect().width;
-  const gripW=16; // 2 grips * 8px
-  const rw=total-sw-cw-gripW;
-  if(rw>200)$("#right").style.width=rw+'px';
-});
-
-// ── 运行指示器 ────────────────────────────────
-function dot(cls,txt){const d=$("#run-dot");d.textContent=txt;d.className=cls+' on';setTimeout(()=>d.classList.remove('on'),3000)}
-
-// ── Toast ─────────────────────────────────────
-function toast(msg,cls="ok"){const t=document.createElement("div");t.className="toast "+cls;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity="0";setTimeout(()=>t.remove(),300)},2500)}
-
-// ── 输出 ──────────────────────────────────────
-function out(h){$("#out-body").innerHTML=h}
-function clr(){out('点击 <b style="color:var(--accent)">▶ 运行</b> 查看程序输出')}
-function esc(s){return(s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-
-// ── API ───────────────────────────────────────
-async function api(path,opts={}){
-  try{const r=await fetch(API+path,{headers:{"Content-Type":"application/json"},...opts});return r.json()}
-  catch(e){console.error('API error:',path,e);return{error:e.message}}
-}
-
-async function loadData(){
-  const[mods,exs,prog]=await Promise.all([api("/api/modules"),api("/api/exercises"),api("/api/progress")]);
-  modules=mods||[];exercises=exs||[];
-  progress={};if(prog&&prog.details)for(const[k,v]of Object.entries(prog.details))progress[k]=v.status;
-  const done=prog?prog.solved||0:0,total=prog?prog.total||144:144;
-  $("#done-n").textContent=done;$("#mini-f").style.width=(total?(done/total*100):0)+"%";
-}
-
-// ── 课程树 ────────────────────────────────────
-const LV={"1":"一、基础入门","2":"二、控制流程","3":"三、函数","4":"四、内存理解","5":"五、数组","6":"六、数据结构","7":"七、指针","8":"八、进阶","9":"九、字符串","10":"十、专家","11":"十一、结构体","12":"十二、文件 I/O","13":"十三、动态内存","14":"十四、算法","15":"十五、系统","16":"十六、项目"};
-
-function buildCourseTree(){
-  $("#side-title").textContent="课程";$("#side-num").textContent=modules.length+" 课时";
-  const ctr=$("#side-inner");ctr.innerHTML="";
-  const groups={};for(const m of modules)(groups[m.level]||=[]).push(m);
-  for(const lv of Object.keys(groups).sort((a,b)=>a-b)){
-    const mods=groups[lv].sort((a,b)=>a.order-b.order);
-    const done=mods.filter(m=>progress[m.slug]==="passed").length,total=mods.length;
-    const card=document.createElement("div");card.className="chapter";
-    const head=document.createElement("div");head.className="ch-head";
-    head.innerHTML=`<span><span class="arr">▼</span> ${LV[lv]||"Level "+lv}</span><span class="prog${done===total&&total>0?' done':''}">${done}/${total}</span>`;
-    const body=document.createElement("div");let fold=false;
-    head.onclick=()=>{fold=!fold;head.classList.toggle("fold",fold);body.style.display=fold?"none":""};
-    card.appendChild(head);card.appendChild(body);
-    for(const m of mods){
-      const isDone=progress[m.slug]==="passed",isCur=curMod&&curMod.slug===m.slug;
-      const d=document.createElement("div");d.className="lesson"+(isCur?" cur":"");
-      d.innerHTML=`<span class="ico${isDone?' done':''}">${isDone?'✓':(isCur?'▸':'○')}</span>${m.title}`;
-      d.onclick=()=>openModule(m);body.appendChild(d);
-    }
-    ctr.appendChild(card);
-  }
-}
-
-function buildExerciseList(filter="all"){
-  $("#side-title").textContent="练习";const done=exercises.filter(e=>e.status==="passed").length;
-  $("#side-num").textContent=`已过 ${done}/${exercises.length}`;
-  const ctr=$("#side-inner");ctr.innerHTML="";
-  const flt=document.createElement("div");flt.className="flt-row";
-  [["all","全部"],["easy","简单"],["medium","中等"],["hard","困难"]].forEach(([v,label])=>{
-    const b=document.createElement("button");b.textContent=label;if(v===filter)b.classList.add("on");
-    b.onclick=()=>buildExerciseList(v);flt.appendChild(b);
-  });ctr.appendChild(flt);
-  let list=exercises;if(filter!=="all")list=list.filter(e=>e.difficulty===filter);
-  for(const ex of list){
-    const st=ex.status,isCur=curEx&&curEx.id===ex.id;
-    const d=document.createElement("div");d.className="ex-item"+(isCur?" cur":"");
-    d.innerHTML=`<span class="dot ${ex.difficulty==='medium'?'med':ex.difficulty}">●</span> <span style="width:14px;font-size:9px;color:${st==='passed'?'var(--green)':st==='failed'?'var(--red)':'var(--text3)'}">${st==='passed'?'✓':(st==='failed'?'✗':'')}</span> ${ex.title}`;
-    d.onclick=()=>openExercise(ex);ctr.appendChild(d);
-  }
-}
-
-// ── Markdown ──────────────────────────────────
-function md2html(md){
-  if(!md)return"";let h=md;
-  h=h.replace(/```(\w*)\n([\s\S]*?)```/g,(_,lang,code)=>`<pre><code>${esc(code.trim())}</code></pre>`);
-  h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
-  h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-  h=h.replace(/^### (.+)$/gm,'<h3>$1</h3>');h=h.replace(/^## (.+)$/gm,'<h2>$1</h2>');h=h.replace(/^# (.+)$/gm,'<h1>$1</h1>');
-  h=h.replace(/^[-*] (.+)$/gm,'<li>$1</li>');h=h.replace(/(<li>.*<\/li>\n?)+/g,'<ul>$&</ul>');
-  h=h.replace(/\n\n/g,'</p><p>');h='<p>'+h+'</p>';h=h.replace(/<p><\/p>/g,'');
-  h=h.replace(/<p><(h|pre|ul|table|hr)/g,'<$1');h=h.replace(/<\/(h3|h2|h1|pre|ul|table)><\/p>/g,'</$1>');
-  return h;
-}
-
-// ── 导航 ──────────────────────────────────────
-function getAdjacent(){
-  const flat=[],groups={};for(const m of modules)(groups[m.level]||=[]).push(m);
-  for(const lv of Object.keys(groups).sort((a,b)=>a-b))for(const m of groups[lv].sort((a,b)=>a.order-b.order))flat.push(m);
-  const i=flat.findIndex(m=>m.slug===curMod?.slug);
-  return{prev:i>0?flat[i-1]:null,next:i<flat.length-1?flat[i+1]:null};
-}
-
-// ── 欢迎页 ────────────────────────────────────
-function showWelcome(){
-  const done=exercises.filter(e=>e.status==="passed").length,total=exercises.length,pct=Math.round(done/total*100)||0;
-  let nl=null;for(const m of modules){if(progress[m.slug]!=="passed"){nl=m;break}}if(!nl&&modules.length)nl=modules[0];
-  $("#center").innerHTML=`
-    <div class="welcome"><div class="emoji">?</div><h1>欢迎学习 C 语言！</h1>
-    <div class="sub">即学即写 · 学写结合</div>
-    <div class="stat-row"><div class="stat-card"><div class="val">${done}</div><div class="lbl">已完成练习</div></div>
-    <div class="stat-card"><div class="val">${pct}%</div><div class="lbl">学习进度</div></div></div>
-    <div class="step"><span class="n">1</span>左侧选择课程，阅读讲解</div>
-    <div class="step"><span class="n">2</span>右侧编辑器修改代码</div>
-    <div class="step"><span class="n">3</span>点击 <b>▶ 运行</b> 查看结果</div>
-    <div class="step"><span class="n">4</span>切换到 <b>练习</b> 或 <b>可视化</b> 模式</div>
-    ${nl?`<button class="start-btn" id="start-btn">开始学习：${nl.title}</button>`:''}</div>`;
-  if(nl)$("#start-btn").onclick=()=>openModule(nl);
-}
-
-// ── 打开课时 ──────────────────────────────────
-function openModule(mod){
-  curMod=mod;curEx=null;$("#var-panel").classList.remove('on');
-  $("#center").innerHTML=`<h1>${mod.title}</h1>`+md2html(mod.content_md||"*暂无内容*");
-  const m=(mod.content_md||"").match(/```c\n([\s\S]*?)```/);
-  setCode(m?m[1].trim():'#include <stdio.h>\n\nint main() {\n    printf("Hello!\\n");\n    return 0;\n}\n');
-  clr();dot('','');$("#btn-submit").style.display="none";$("#btn-reset").style.display="none";
-  $$("#output-pane .otab").forEach(b=>{if(b.dataset.tab==="judge")b.style.display="none"});
-  const nav=document.createElement("div");nav.className="lesson-nav";
-  const{prev,next}=getAdjacent();
-  nav.innerHTML=`<button ${prev?'':'disabled style="opacity:0.3"'}>← ${prev?prev.title:'没有了'}</button><button class="primary">${next?`下一课：${next.title} →`:'完成全部！'}</button>`;
-  nav.children[0].onclick=()=>{if(prev)openModule(prev)};nav.children[1].onclick=()=>{if(next)openModule(next)};
-  $("#center").appendChild(nav);buildCourseTree();
-  setTimeout(()=>{const c=document.querySelector(".lesson.cur");if(c)c.scrollIntoView({block:"center",behavior:"smooth"})},100);
-}
-
-// ── 打开习题 ──────────────────────────────────
-async function openExercise(ex){
-  curEx=ex;curMod=null;$("#var-panel").classList.remove('on');
-  const d=await api(`/api/exercise/${ex.id}`);if(d.error)return;
-  const dn=d.difficulty==="easy"?"简单":d.difficulty==="medium"?"中等":"困难";
-  const sb=d.status==="passed"?'<span class="badge ok">✓ 已通过</span>':(d.status==="failed"?'<span class="badge no">✗ 未通过</span>':'');
-  $("#center").innerHTML=`<h1>${d.title}</h1><div style="display:flex;gap:6px;align-items:center;margin-bottom:14px;flex-wrap:wrap"><span class="badge ${d.difficulty==='medium'?'medium':d.difficulty}">${dn}</span>${sb}${(d.tags||[]).map(t=>`<span style="padding:2px 8px;border-radius:4px;font-size:10px;background:var(--bg-hover);color:var(--text2)">${t}</span>`).join('')}</div>${md2html(d.description_md||"")}${d.hints?.length?`<div style="margin-top:14px;padding:10px;background:var(--bg-hover);border-radius:8px;font-size:11px;color:var(--text2);line-height:1.7">提示：${d.hints.join(' | ')}</div>`:""}`;
-  setCode(d.template_code||"// 在这里写你的代码\n");clr();dot('','');
-  $("#btn-submit").style.display="";$("#btn-reset").style.display="";
-  $$("#output-pane .otab").forEach(b=>{if(b.dataset.tab==="judge")b.style.display=""});
-  buildExerciseList();
-}
-
-// ── 变量检查器 ────────────────────────────────
-function inspectVars(code){
-  const vars=[],re=/\b(int|float|double|char)\s+(\*?\s*\w+)\s*(=|;)/g;let m;
-  while((m=re.exec(code))!==null){
-    const type=m[1],name=m[2].replace(/\s+/g,''),init=m[3]==='=';
-    if(!['main','if','for','while','return'].includes(name)&&name.length>0)vars.push({type,name,init});
-  }
-  const seen=new Set();return vars.filter(v=>{if(seen.has(v.name))return false;seen.add(v.name);return true});
-}
-function showVarPanel(vars){
-  const el=$("#var-list");
-  if(!vars.length){el.innerHTML='<span style="color:var(--text3)">未检测到变量</span>';return}
-  el.innerHTML=vars.map(v=>`<div class="vi"><span class="vt">${v.type}</span><span class="vn">${v.name}</span>${v.init?'<span class="vv">= ...</span>':''}</div>`).join('');
-  $("#var-panel").classList.add('on');
-}
-$("#btn-inspect").onclick=()=>{const v=inspectVars(getCode());showVarPanel(v);toast(v.length?`检测到 ${v.length} 个变量`:"未检测到变量",v.length?"ok":"warn")};
-$("#var-close").onclick=()=>$("#var-panel").classList.remove('on');
-
-// ── 运行代码 ──────────────────────────────────
-$("#btn-run").onclick=async()=>{
-  const code=getCode();if(!code.trim())return;
-  out('<span class="s">编译运行中...</span>');
-  $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="out"));
-  try{
-    const r=await api("/api/run",{method:"POST",body:JSON.stringify({code})});
-    if(r.compile_error){
-      const lines=r.compile_error.split('\n').map(l=>/main\.c:(\d+)/.test(l)?`<span class="erlink" data-line="${RegExp.$1}">${esc(l)}</span>`:esc(l)).join('\n');
-      out(`<div style="color:var(--red);font-weight:700;margin-bottom:4px">编译错误</div>\n${lines}\n<div class="hint">点击蓝色行号跳转到错误位置</div>`);
-      dot('no','编译失败');
-      $$(".erlink").forEach(el=>el.onclick=()=>{
-        const ln=parseInt(el.dataset.line),lines=codeInput.value.split('\n');
-        let pos=0;for(let i=0;i<ln-1;i++)pos+=lines[i].length+1;
-        codeInput.focus();codeInput.setSelectionRange(pos,pos+lines[ln-1].length);
-      });
-    }else if(r.success){
-      out(`<div style="color:var(--green);font-weight:700;margin-bottom:4px">运行成功 — ${r.wall_time_ms}ms</div>\n${esc(r.stdout||"(无输出)")}`);
-      dot('ok','运行成功');const v=inspectVars(code);if(v.length)showVarPanel(v);
-      if(!curEx)toast("运行成功！");
-    }else{
-      out(`<div style="color:var(--red);font-weight:700;margin-bottom:4px">运行时出错 (退出码 ${r.exit_code})</div>\n${esc(r.stderr||"")}`);
-      dot('no','运行出错');
-    }
-  }catch(e){out(`<span style="color:var(--red)">请求失败：${esc(e.message)}</span>`)}
-};
-
-// ── 提交判题 ──────────────────────────────────
-$("#btn-submit").onclick=async()=>{
-  if(!curEx)return;const code=getCode();if(!code.trim())return;
-  out('<span class="s">判题中...</span>');
-  $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="out"));
-  try{
-    const r=await api("/api/submit",{method:"POST",body:JSON.stringify({code,exercise_id:curEx.id})});
-    let h="";
-    if(r.status==="accepted"){
-      h+=`<div class="ok-big">完全正确！</div><div style="text-align:center;color:var(--text3);margin-bottom:8px">${r.total_count}/${r.total_count} 测试通过 · ${r.wall_time_ms}ms</div>`;
-      dot('ok','全部通过');toast("全部通过！");
-    }else if(r.status==="compile_error"){
-      h+=`<div class="no-big">编译错误</div><div style="text-align:center;color:var(--red)">${esc(r.compile_error||"")}</div>`;
-      dot('no','编译失败');toast("编译没通过","warn");
-    }else{
-      h+=`<div class="no-big">通过 ${r.passed_count}/${r.total_count}</div><div style="text-align:center;color:var(--text2);margin-bottom:8px">别灰心，改完再试！</div>`;
-      dot('no','部分通过');toast(`${r.passed_count}/${r.total_count} 通过`,"warn");
-    }
-    if(r.test_results)for(const tc of r.test_results){
-      if(tc.passed)h+=`<div class="case-ok">✓ 测试 ${tc.case}</div>`;
-      else{h+=`<div class="case-no">✗ 测试 ${tc.case}</div>`;if(tc.error)h+=`<div class="s">  ${esc(tc.error)}</div>`;if(tc.actual)h+=`<div class="s">  你的输出：${esc(tc.actual)}</div>`;if(tc.expected)h+=`<div class="s">  预期输出：${esc(tc.expected)}</div>`}
-    }
-    out(h);await loadData();buildExerciseList();
-  }catch(e){out(`<span style="color:var(--red)">请求失败：${esc(e.message)}</span>`)}
-};
-
-// ── 重置 ──────────────────────────────────────
-$("#btn-reset").onclick=async()=>{
-  if(!curEx)return;const d=await api(`/api/exercise/${curEx.id}`);
-  setCode(d.template_code||"");clr();dot('','');toast("代码已重置");
-};
-
-// ── 可视化 ────────────────────────────────────
-const EXAMPLES_CODE={
-  pointer_basics:`#include <stdio.h>\n\nint main() {\n    int a = 5;\n    int b = 10;\n    int *p = &a;\n\n    printf("a = %d\\n", a);\n    *p = 20;\n    printf("a = %d\\n", a);\n\n    p = &b;\n    printf("*p = %d\\n", *p);\n    return 0;\n}`,
-  function_pointer:`#include <stdio.h>\n\nvoid swap(int *x, int *y) {\n    int temp = *x;\n    *x = *y;\n    *y = temp;\n}\n\nint main() {\n    int a = 5;\n    int b = 10;\n\n    printf("before: a=%d b=%d\\n", a, b);\n    swap(&a, &b);\n    printf("after:  a=%d b=%d\\n", a, b);\n    return 0;\n}`,
-  array_pointer:`#include <stdio.h>\n\nint main() {\n    int arr[3] = {10, 20, 30};\n    int *p = arr;\n\n    printf("arr[0] = %d\\n", arr[0]);\n    printf("*p = %d\\n", *p);\n\n    p = p + 1;\n    printf("*p = %d\\n", *p);\n\n    *p = 99;\n    printf("arr[1] = %d\\n", arr[1]);\n    return 0;\n}`,
-};
-
-function showVizPanel(){
-  $("#sidebar").style.display="none";$("#center").style.display="none";$("#right").style.display="none";
-  $$('.grip').forEach(g=>g.style.display='none');$("#viz-panel").classList.add('on');
-}
-function hideVizPanel(){
-  $("#sidebar").style.display="";$("#center").style.display="";$("#right").style.display="";
-  $$('.grip').forEach(g=>g.style.display='');$("#viz-panel").classList.remove('on');
-}
-
-async function vizLoadCode(code){
-  const r=await api("/api/sim/load",{method:"POST",body:JSON.stringify({code})});
-  if(r.error){toast(r.error,"err");return}
-  vizRefresh(r);
-}
-async function vizLoadExample(name){
-  const r=await api(`/api/sim/example/${name}`);
-  if(r.error){toast(r.error,"err");return}
-  $("#viz-code").textContent=EXAMPLES_CODE[name]||"";vizRefresh(r);
-}
-async function vizStep(){const r=await api("/api/sim/step",{method:"POST"});vizRefresh(r)}
-async function vizBack(){const r=await api("/api/sim/back",{method:"POST"});vizRefresh(r)}
-async function vizReset(){const r=await api("/api/sim/reset",{method:"POST"});vizRefresh(r)}
-async function vizRunAll(){const r=await api("/api/sim/run",{method:"POST"});vizRefresh(r)}
-
-function vizRefresh(r){
-  if(!r||r.error)return;
-  // Code display with line highlight
-  const lines=(EXAMPLES_CODE[r._example]||$("#viz-code").textContent||"").split('\n');
-  // Update gutter
-  $("#viz-gutter").innerHTML=lines.map((_,i)=>`<span${i+1===r.current_line?' class="hl"':''}>${i+1}</span>`).join('\n');
-  // Update code with highlight
-  $("#viz-code").innerHTML=lines.map((l,i)=>`<span${i+1===r.current_line?' class="hl"':''}>${esc(l)}</span>`).join('\n');
-
-  // Memory table
-  let mem='<table style="width:100%;border-collapse:collapse;font-size:10px;font-family:var(--mono)">';
-  mem+='<tr style="color:var(--text3)"><th style="padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)">变量</th><th style="padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)">类型</th><th style="padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)">值</th><th style="padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)">地址</th><th style="padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)">指向</th><th style="padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)">帧</th></tr>';
-  if(r.variables)for(const v of r.variables){
-    const isPtr=v.type==='int*';
-    mem+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:3px 6px;color:var(--text)">${v.name}</td><td style="padding:3px 6px;color:var(--accent2)">${v.type}</td><td style="padding:3px 6px;color:${isPtr?'var(--amber)':'var(--green)'}">${v.value}</td><td style="padding:3px 6px;color:var(--text3)">${v.address}</td><td style="padding:3px 6px;color:var(--accent)">${v.points_to||'-'}</td><td style="padding:3px 6px;color:var(--text3);font-size:9px">${v.frame||''}</td></tr>`;
-    if(v.elements)for(const el of v.elements){
-      mem+=`<tr style="border-bottom:1px solid var(--border);background:var(--bg-hover)"><td style="padding:2px 6px 2px 16px;color:var(--text2)">${v.name}[${el.index}]</td><td style="padding:2px 6px;color:var(--text3)">int</td><td style="padding:2px 6px;color:var(--green)">${el.value}</td><td style="padding:2px 6px;color:var(--text3)">${el.addr}</td><td>-</td><td style="font-size:9px">${v.frame||''}</td></tr>`;
-    }
-  }
-  mem+='</table>';
-  if(!r.variables||!r.variables.length)mem='<div style="color:var(--text3);padding:16px;text-align:center">暂无变量 — 点击 <b>下一步</b> 开始执行</div>';
-  $("#viz-memory").innerHTML=mem;
-  if(r.hints&&r.hints.length)$("#viz-hints").innerHTML=r.hints.map(h=>'<div>'+h+'</div>').join('');
-  $("#viz-output").textContent=r.output||'(暂无输出)';
-  $("#viz-next").style.display=r.finished?'none':'';
-}
-
-$("#viz-load").onclick=()=>vizLoadCode($("#viz-code").textContent||EXAMPLES_CODE.pointer_basics);
-$("#viz-next").onclick=vizStep;$("#viz-prev").onclick=vizBack;
-$("#viz-reset").onclick=vizReset;$("#viz-runall").onclick=vizRunAll;
-$("#viz-ex1").onclick=()=>{const c=EXAMPLES_CODE.pointer_basics;$("#viz-code").textContent=c;vizLoadCode(c)};
-$("#viz-ex2").onclick=()=>{const c=EXAMPLES_CODE.function_pointer;$("#viz-code").textContent=c;vizLoadCode(c)};
-$("#viz-ex3").onclick=()=>{const c=EXAMPLES_CODE.array_pointer;$("#viz-code").textContent=c;vizLoadCode(c)};
-
-// ── 模式切换 ──────────────────────────────────
-$$("#topbar .modes button").forEach(b=>b.onclick=()=>{
-  $$("#topbar .modes button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on");mode=b.dataset.mode;curMod=null;curEx=null;
-  if(mode==="visualize"){$("#viz-code").textContent=EXAMPLES_CODE.pointer_basics;showVizPanel();vizLoadCode(EXAMPLES_CODE.pointer_basics);return}
-  hideVizPanel();clr();dot('','');
-  $("#btn-submit").style.display=mode==="practice"?"":"none";
-  $("#btn-reset").style.display=mode==="practice"?"":"none";
-  if(mode==="learn"){buildCourseTree();showWelcome()}else{buildExerciseList();showWelcome()}
-});
-
-// ── Ctrl+Enter ────────────────────────────────
-document.addEventListener("keydown",e=>{
-  if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();(mode==="practice"&&curEx?$("#btn-submit"):$("#btn-run")).click()}
-});
-
-// ── 恢复偏好 ──────────────────────────────────
-const gs=parseInt(localStorage.getItem('c-gs'));if(gs)setGlobalSize(gs);
-const cs=parseInt(localStorage.getItem('c-cs'));if(cs)setCodeSize(cs);
-const ac=localStorage.getItem('c-ac');if(ac)setAccent(ac);
-if(localStorage.getItem('c-lt')==='1'){$("#btn-light").textContent='🌙';document.body.classList.add('light')}
-
-// ── 启动 ──────────────────────────────────────
-(async()=>{
-  await loadData();
-  buildCourseTree();
-  showWelcome();
-})();
-</script>
+<script src="/app.js"></script>
 </body>
 </html>

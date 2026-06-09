@@ -93,9 +93,10 @@ def api_progress():
 def api_run():
     data = request.get_json() or {}
     code = data.get("code", "")
+    stdin = data.get("stdin", "")
     if not code.strip():
         return jsonify({"error": "No code provided"}), 400
-    r = compile_and_run(code)
+    r = compile_and_run(code, stdin=stdin)
     return jsonify({
         "success": r.success,
         "stdout": r.stdout,

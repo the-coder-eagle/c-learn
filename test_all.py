@@ -295,12 +295,105 @@ class TestServerAPI(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("C 语言学习平台", r.get_data(as_text=True))
 
-    def test_static_css(self):
-        """验证前端 HTML 包含完整 CSS"""
+    def test_static_html(self):
+        """前端 HTML 结构正确，引用外部 CSS/JS"""
         r = self.client.get("/")
         html = r.get_data(as_text=True)
-        self.assertIn("font-family", html)
-        self.assertIn("var(--accent)", html)
+        self.assertIn("C 语言学习平台", html)
+        self.assertIn('<link rel="stylesheet" href="/style.css">', html)
+        self.assertIn('<script src="/app.js"></script>', html)
+
+    def test_static_css_file(self):
+        """style.css 独立文件可访问，包含主题变量和语法高亮配色"""
+        r = self.client.get("/style.css")
+        self.assertEqual(r.status_code, 200)
+        css = r.get_data(as_text=True)
+        self.assertIn("--accent", css)
+        self.assertIn("--btn-h", css)
+        self.assertIn("focus-visible", css)
+        self.assertIn("hl-kw", css)  # syntax highlight token
+
+    def test_static_js_file(self):
+        """app.js 独立文件可访问，包含核心函数"""
+        r = self.client.get("/app.js")
+        self.assertEqual(r.status_code, 200)
+        js = r.get_data(as_text=True)
+        self.assertIn("toggleSidebar", js)
+        self.assertIn("saveCodeHistory", js)
+        self.assertIn("tokenizeLine", js)  # syntax highlight engine
+        self.assertIn("showOnboarding", js)  # onboarding
+
+
+class TestSimulator(unittest.TestCase):
+    """v9: 模拟器功能测试"""
+
+    def setUp(self):
+        from simulator import CSimulator
+        self.sim = CSimulator("""#include <stdio.h>
+
+int main() {
+    int a = 5;
+    int *p = &a;
+    *p = 10;
+    printf("%d", a);
+    return 0;
+}""")
+
+    def test_init_state(self):
+        """初始状态：未执行，无输出"""
+        state = self.sim._get_state()
+        self.assertEqual(state["output"], "")
+        self.assertFalse(state["finished"])
+        self.assertGreater(len(self.sim._lines), 0)  # 代码已解析
+
+    def test_step_creates_variables(self):
+        """逐步执行会创建变量"""
+        # Step through function entry and variable declarations
+        for _ in range(4):  # func_def, skip, var_decl_init x2, skip
+            self.sim.step()
+        state = self.sim._get_state()
+        var_names = [v["name"] for v in state["variables"]]
+        self.assertIn("a", var_names)
+
+    def test_pointer_deref(self):
+        """*p = 10 会修改 a 的值"""
+        # Run to completion
+        state = self.sim.run_all()
+        self.assertIn("10", state["output"])
+        self.assertTrue(state["finished"])
+
+    def test_reset(self):
+        """重置回到初始状态"""
+        self.sim.run_all()
+        self.sim.reset()
+        state = self.sim._get_state()
+        self.assertEqual(len(state["variables"]), 0)
+        self.assertFalse(state["finished"])
+
+    def test_step_back(self):
+        """回退一步"""
+        self.sim.step()  # func_def
+        self.sim.step()  # skip (include)
+        self.sim.step()  # var_decl_init: a=5
+        before = self.sim._get_state()
+        self.sim.step()  # another step
+        after = self.sim._get_state()
+        self.assertNotEqual(before["current_line"], after["current_line"])
+        # step back
+        back = self.sim.step_back()
+        self.assertEqual(back["current_line"], before["current_line"])
+
+    def test_example_loads(self):
+        """内置示例可加载"""
+        from simulator import EXAMPLES
+        self.assertIn("pointer_basics", EXAMPLES)
+        self.assertIn("function_pointer", EXAMPLES)
+        self.assertIn("array_pointer", EXAMPLES)
+        from simulator import CSimulator
+        for key in EXAMPLES:
+            sim = CSimulator(EXAMPLES[key]["code"])
+            state = sim._get_state()
+            self.assertIsNotNone(state)
 
 
 if __name__ == "__main__":

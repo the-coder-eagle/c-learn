@@ -1,0 +1,5 @@
+flask>=3.0
+pywebview>=5.0
+pyinstaller>=6.0
+pyyaml>=6.0
+pygments>=2.17

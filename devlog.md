@@ -1,5 +1,167 @@
 # C Learn — 开发日志
 
+## 2026-06-09 13:00 — v11 前端重构 + 语法高亮 + 新手引导
+
+### 前端架构统一
+- **彻底消除内联代码**: index.html 现为纯 HTML 结构 (130 行)，CSS/JS 完全独立
+- **style.css** (340 行): 完整样式 + 语法高亮 Token 配色 (暗色/亮色双主题)
+- **app.js** (530 行): 全部逻辑，零外部依赖
+- 删除旧 v9/v10 重复代码，统一为单一来源
+
+### 新功能
+
+**1. C 语言语法高亮**
+- 实时 tokenize: 关键字(int/for/return…)紫色、类型(int/char…)黄色、字符串绿色、注释灰色、数字橙色、预处理指令蓝色
+- 透明 textarea + 底层 `<pre>` 叠加方案，支持暗色/亮色主题
+- 每次输入自动重绘，100 行以内无延迟
+- 新增 CSS 变量: `--hl-keyword` `--hl-type` `--hl-string` `--hl-comment` `--hl-number` `--hl-preproc` `--hl-func` `--hl-op`
+
+**2. 新手引导 (Onboarding)**
+- 首次启动 600ms 后自动弹出 4 步引导卡片
+- Step 0: 欢迎 + 统计概览 (课时数/练习题数/完成率)
+- Step 1: 左侧课程与练习说明
+- Step 2: 右侧编辑器快捷键提示 (Ctrl+Enter/Tab/Ctrl+B)
+- Step 3: 可视化模式介绍
+- 完成后写入 `localStorage c-onboarded`，不再弹出
+- 顶部新增 ❓ 帮助按钮，可随时重新打开引导
+
+**3. 学习进度仪表盘**
+- 欢迎页新增模块进度条 (16 个模块各有完成百分比)
+- 新增"困难题已过"统计卡片
+- 模块完成率绿色/蓝色双色进度条
+
+### 其他改进
+- 可视化模式新增"📝 自写代码"按钮，从编辑器加载代码到可视化
+- 输出面板新增清空按钮
+- 编辑器布局改为 pre+textarea 叠加结构 (`.editor-inner`)
+- stdin 输入栏增加图标
+
+### 测试更新
+- `test_static_css` → `test_static_html`: 验证外部 CSS/JS 引用
+- 测试新增对 `hl-kw`/`tokenizeLine`/`showOnboarding` 的断言
+- **40 tests, 100% pass**
+
+### README 更新
+- 架构图反映实际 Web 前端 + Flask 后端方案
+- 项目结构更新为新文件布局
+
+---
+
+## 2026-06-09 11:00 — v9 架构优化 + 新功能
+
+### 架构重构：前端三文件分离
+```
+web/index.html  → 942 行单文件 (旧)
+web/index.html  → 130 行纯 HTML 结构 (新)
+web/style.css   → 300 行独立样式表 (新)
+web/app.js      → 430 行独立逻辑 (新)
+```
+- HTML: 仅含页面结构 + `<link>` / `<script>` 引用
+- CSS: 全部样式独立，新增 search/history/system-theme 规则
+- JS: 全部逻辑独立，新增 3 项功能
+- Flask static_folder 已配置，`/style.css` `/app.js` 直接可用
+
+### 新功能 (P1/P2)
+
+**1. 练习搜索过滤**
+- 侧栏练习列表顶部新增搜索框
+- 支持按标题和标签过滤
+- 搜索词保留，切换难度筛选不丢失
+
+**2. 代码历史记录**
+- 编辑器工具栏新增 🕐 历史按钮
+- 运行/提交时自动保存代码快照 (最多 10 条)
+- 点击历史项一键恢复代码
+- 数据存储于 localStorage `c-code-hist`
+
+**3. 系统主题自动跟随**
+- 首次启动时检测 `prefers-color-scheme`
+- 用户手动切换后以用户选择为准，不再自动跟随
+- CSS 新增 `@media (prefers-color-scheme: light)` 规则
+- `auto-theme` 类预留用于未来"跟随系统"选项
+
+### 其他修复
+- 欢迎页 emoji 修复: `?` → `🎓`
+- 完全正确提示添加 🎉 庆祝图标
+- 提示文本添加 💡 图标
+- 无匹配题目时显示"无匹配题目"提示
+
+### 测试
+- 新增 `TestSimulator` (6 tests): 初始状态、变量创建、指针解引用、重置、回退、示例加载
+- 新增 `test_static_css_file` / `test_static_js_file`: 验证独立文件可访问
+- **总计 40 tests, 100% pass**
+
+### 基础设施
+- 新增 `requirements.txt`: flask, pywebview, pyinstaller, pyyaml, pygments
+
+---
+
+## 2026-06-09 10:30 — v8 人因工程 UI 全面升级
+
+### 用户反馈
+- 按钮/按键太小，难以点击
+- 两条侧栏分隔条不能自由拖动（抓取区太窄 8px）
+- UI 设计不符合人因工程标准
+
+### P0 — 按钮尺寸统一升级
+- **工具栏按钮** `btn-run`/`btn-sub`: padding 4→6px/12→18px, min-height 28→32px
+- **字体调节按钮** `sz-btn`: 20×20 → 26×26px
+- **顶栏模式切换**: font-size 11→12px, padding 4→5px/10→14px, min-height 28px
+- **输出区 tab**: font-size 9→10px, padding 2→3px/8→10px
+- **练习筛选按钮**: font-size 9→10px, padding 3→5px, min-height 26px
+- **侧栏课程/习题项**: padding 6→8px, min-height 32px
+- **顶栏高度**: 40→44px，容纳更大的按钮
+
+### P0 — 拖拽系统重设计
+- **Grip 点击区**: 视觉 12px + `::before` 伪元素扩展到 20px 点击区
+- **三栏最小宽度保护**: 侧栏 120px, 内容 200px, 右侧 320px
+- **窗口缩放比例保持**: resize 事件按比例重新分配三栏宽度
+- **新增竖直拖拽条** `grip-v`: 编辑器区和输出区之间可上下拖拽调整高度
+- **输出区高度持久化**: 保存到 localStorage `c-out-h`
+
+### P1 — 侧栏折叠
+- 顶栏新增 ☰ 按钮，点击折叠/展开侧栏
+- 折叠时侧栏宽度→0，左 grip 隐藏
+- 右侧两栏自动扩展填满空间
+- 快捷键: `Ctrl+B`
+- 折叠状态持久化到 localStorage `c-sidebar-collapsed`
+
+### P1 — 字号体系
+```
+--fs-xs:10px → 辅助文字、标签、进度
+--fs-sm:11px → 侧栏项目、工具栏按钮
+--fs-md:13px → 正文级交互元素
+--fs-lg:15px → 小标题
+--fs-xl:18px → 大标题
+```
+所有 UI 文字统一使用 `var(--fs-*)` 变量，不再硬编码 px
+
+### P1 — 顶栏重新布局
+- Logo + 模式切换 → 分隔线 → 界面字体 → 分隔线 → 代码字体 → 分隔线 → 进度 → 主题色 → 亮暗
+- 使用 `.sep` 分隔线和 `.ctrl-group` 分组美化
+- 代码字体在顶栏和编辑器工具栏同步调节
+- 所有主题色圆点添加 `title` tooltip 提示
+
+### P2 — 细节打磨
+- **focus-visible**: 所有按钮/输入框添加 2px accent 色 outline
+- **transition**: 所有交互元素统一 `0.18s ease` 过渡
+- **Loading 状态**: 运行/提交按钮 API 调用期间禁用 + 半透明
+- **Toast**: 持续时间 2.5→3s, 底部间距 20→24px
+- **Tooltip**: 所有功能性按钮添加 `title` 属性
+- **欢迎页**: 统计卡片 hover 高亮, 步骤字号提升
+- **滚动条**: 5px 宽, hover 时颜色加深
+- **可视化按钮**: 添加图标和 title
+
+### 测试
+- 22/23 测试类通过 (TestServerAPI 需 Flask — 网络不可用)
+- 核心测试: compile(5), judge(5), content(4), security(4), progress(2), compile_only(2) 全部 PASS
+
+### 打包
+- `C-Learn.spec` 无需修改 (web 目录已在 datas 中)
+- 构建命令: `pyinstaller C-Learn.spec`
+
+---
+
 ## 2026-06-09 00:30 — v7 离线化 + GitHub 准备
 
 ### 修复
