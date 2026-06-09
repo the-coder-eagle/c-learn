@@ -382,6 +382,7 @@ function showWelcome(){
     '<div class="step"><span class="n">3</span>点击 <b>▶ 运行</b> 查看结果</div>'+
     '<div class="step"><span class="n">4</span>切换到 <b>练习</b> 或 <b>可视化</b> 模式</div>'+
     (nl?'<button class="start-btn" id="start-btn">开始学习：'+nl.title+'</button>':'');
+  $("#center").scrollTop=0;
   if(nl)$("#start-btn").onclick=()=>openModule(nl);
 }
 
@@ -393,6 +394,7 @@ function openModule(mod){
   let content = mod.content_md || "*暂无内容*";
   content = content.replace(/^# .+\n?/, '').trim();
   $("#center").innerHTML='<h1>'+mod.title+'</h1>'+md2html(content);
+  $("#center").scrollTop=0;
   const blocks=[...(mod.content_md||"").matchAll(/```c\n([\s\S]*?)```/g)];
   let code=DEFAULT_CODE;
   const mainBlock=blocks.find(b=>b[1].includes('int main'));
@@ -417,6 +419,7 @@ async function openExercise(ex){
   const dn=d.difficulty==="easy"?"简单":d.difficulty==="medium"?"中等":"困难";
   const sb=d.status==="passed"?'<span class="badge ok">✓ 已通过</span>':(d.status==="failed"?'<span class="badge no">✗ 未通过</span>':'');
   $("#center").innerHTML='<h1>'+d.title+'</h1><div style="display:flex;gap:6px;align-items:center;margin-bottom:14px;flex-wrap:wrap"><span class="badge '+(d.difficulty==='medium'?'medium':d.difficulty)+'">'+dn+'</span>'+sb+(d.tags||[]).map(t=>'<span style="padding:2px 8px;border-radius:4px;font-size:var(--fs-xs);background:var(--bg-hover);color:var(--text2)">'+t+'</span>').join('')+'</div>'+md2html(d.description_md||"")+(d.hints?.length?'<div style="margin-top:14px;padding:10px;background:var(--bg-hover);border-radius:8px;font-size:11px;color:var(--text2);line-height:1.7">💡 提示：'+d.hints.join(' | ')+'</div>':"");
+  $("#center").scrollTop=0;
   setCode(d.template_code||"// 在这里写你的代码\n");clr();dot('','');
   $("#btn-submit").style.display="";$("#btn-reset").style.display="";
   $$("#output-pane .otab").forEach(b=>{if(b.dataset.tab==="judge")b.style.display=""});
