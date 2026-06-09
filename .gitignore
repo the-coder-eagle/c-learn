@@ -17,3 +17,18 @@ Thumbs.db
 
 # User data
 progress.json
+
+# Build-only packages (pip installed for PyInstaller)
+tools/python/Lib/site-packages/flask/
+tools/python/Lib/site-packages/flask-*.dist-info/
+tools/python/Lib/site-packages/werkzeug/
+tools/python/Lib/site-packages/werkzeug-*.dist-info/
+tools/python/Lib/site-packages/blinker/
+tools/python/Lib/site-packages/blinker-*.dist-info/
+tools/python/Lib/site-packages/itsdangerous/
+tools/python/Lib/site-packages/itsdangerous-*.dist-info/
+tools/python/Lib/site-packages/jinja2/
+tools/python/Lib/site-packages/jinja2-*.dist-info/
+tools/python/Lib/site-packages/markupsafe/
+tools/python/Lib/site-packages/markupsafe-*.dist-info/
+tools/python/Scripts/flask.exe

@@ -11,14 +11,23 @@ sys.path.insert(0, str(Path(__file__).parent))
 from flask import Flask, request, jsonify, send_from_directory
 from services import (
     load_modules, load_exercises, load_progress, save_progress,
-    compile_and_run, judge,
+    compile_and_run, judge, InteractiveRunner,
 )
+import services  # for _runner singleton access
 from simulator import CSimulator, EXAMPLES
 
 # Global simulator instance (one per session)
 _simulator: CSimulator = None
 
 app = Flask(__name__, static_folder="web", static_url_path="")
+
+# Disable caching for development — always serve fresh files
+@app.after_request
+def _no_cache(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 # ── Static files ───────────────────────────────────────────
@@ -80,7 +89,10 @@ def api_exercise(ex_id):
 def api_progress():
     progress = load_progress()
     exercises = load_exercises()
-    solved = sum(1 for v in progress.values() if v.get("status") == "passed")
+    # Only count exercise IDs — module slugs should not count toward solved
+    ex_ids = {e.id for e in exercises}
+    solved = sum(1 for k, v in progress.items()
+                 if k in ex_ids and v.get("status") == "passed")
     return jsonify({
         "solved": solved,
         "total": len(exercises),
@@ -214,6 +226,59 @@ def api_sim_state():
     if not _simulator:
         return jsonify({"error": "No code loaded"}), 400
     return jsonify(_simulator._get_state())
+
+
+# ── Interactive Run (streaming I/O) ─────────────────────────
+@app.route("/api/interactive/start", methods=["POST"])
+def api_interactive_start():
+    """Compile and start a C program for interactive execution."""
+    data = request.get_json() or {}
+    code = data.get("code", "")
+    if not code.strip():
+        return jsonify({"status": "error", "error": "No code provided"}), 400
+
+    # Kill any previous session
+    if services._runner and services._runner.running:
+        services._runner.kill()
+
+    services._runner = InteractiveRunner()
+    result = services._runner.start(code)
+    return jsonify(result)
+
+
+@app.route("/api/interactive/poll")
+def api_interactive_poll():
+    """Poll for new output from the running program."""
+    if not services._runner:
+        return jsonify({"running": False, "exit_code": None, "lines": []})
+    return jsonify(services._runner.poll())
+
+
+@app.route("/api/interactive/input", methods=["POST"])
+def api_interactive_input():
+    """Send a line of stdin input to the running program."""
+    data = request.get_json() or {}
+    text = data.get("text", "")
+    if services._runner and services._runner.running:
+        ok = services._runner.send_input(text)
+        return jsonify({"ok": ok})
+    return jsonify({"ok": False, "error": "No running process"})
+
+
+@app.route("/api/interactive/kill", methods=["POST"])
+def api_interactive_kill():
+    """Forcefully terminate the running program."""
+    if services._runner:
+        services._runner.kill()
+    return jsonify({"ok": True})
+
+
+# ── Module progress ───────────────────────────────────────
+@app.route("/api/progress/module/<slug>", methods=["POST"])
+def api_progress_module(slug):
+    """Mark a course module as viewed."""
+    save_progress(slug, "passed", "")
+    return jsonify({"ok": True})
 
 
 # ── Health ─────────────────────────────────────────────────

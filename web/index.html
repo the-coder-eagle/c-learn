@@ -72,13 +72,14 @@
     <!-- Vertical grip -->
     <div class="grip-v" id="grip-out" data-left="editor-wrap" data-right="output-pane"></div>
 
-    <!-- Stdin -->
-    <div id="stdin-bar"><span>📥 输入</span><textarea id="stdin-input" placeholder="程序输入 (scanf)..." rows="1"></textarea></div>
+    <!-- Stdin bar (hidden — input is now inline in the terminal) -->
+    <div id="stdin-bar" style="display:none"><span>📥 输入</span><textarea id="stdin-input" placeholder="程序输入..." rows="1"></textarea></div>
 
     <!-- Output -->
     <div id="output-pane">
       <div class="out-hd"><span>输出</span><span class="sp" style="flex:1"></span><button class="otab on" data-tab="out">运行结果</button><button class="otab" data-tab="judge" style="display:none">判题</button><button class="otab" id="tab-clear">✕</button></div>
-      <div id="out-body">点击 <b style="color:var(--accent)">▶ 运行</b> 查看程序输出</div>
+      <textarea id="term-out" readonly placeholder="点击 ▶ 运行 查看程序输出" spellcheck="false"></textarea>
+      <div id="judge-body" style="display:none"></div>
     </div>
   </div>
 
@@ -153,6 +154,6 @@
   </div>
 </div>
 
-<script src="/app.js"></script>
+<script src="/app.js?v=11"></script>
 </body>
 </html>

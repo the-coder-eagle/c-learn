@@ -111,12 +111,12 @@ codeInput.addEventListener('keydown',e=>{
 });
 updateGutter();highlight();
 
-// stdin scanf detection
+// stdin scanf detection (visual hint only)
 codeInput.addEventListener('input',function(){
   var v=codeInput.value;
   var has=/scanf/.test(v)||/gets/.test(v)||/fgets/.test(v)||/getchar/.test(v);
-  $("#stdin-bar").classList.toggle('need',has);
-  if(has&&!$("#stdin-input").value.trim())$("#stdin-input").placeholder='⚠ 代码需要输入，请在此填写...';
+  if(has&&!isRunning)codeInput.style.borderBottom='2px solid var(--amber)';
+  else codeInput.style.borderBottom='';
 });
 
 function getCode(){return codeInput.value}
@@ -220,8 +220,12 @@ document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="b"){
 function dot(cls,txt){const d=$("#run-dot");d.textContent=txt;d.className=cls+' on';setTimeout(()=>d.classList.remove('on'),3500)}
 function toast(msg,cls="ok"){const t=document.createElement("div");t.className="toast "+cls;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity="0";setTimeout(()=>t.remove(),300)},3000)}
 function setBtnLoading(btn,loading){if(loading){btn.classList.add('loading');btn.disabled=true}else{btn.classList.remove('loading');btn.disabled=false}}
-function out(h){$("#out-body").innerHTML=h}
-function clr(){out('点击 <b style="color:var(--accent)">▶ 运行</b> 查看程序输出')}
+// Terminal helpers — unified output+input textarea
+function out(h){const ta=$("#term-out");ta.value=h;ta.scrollTop=ta.scrollHeight;_inputStart=ta.value.length}
+function outAppend(t){const ta=$("#term-out");ta.value+=t;ta.scrollTop=ta.scrollHeight;if(isRunning)_inputStart=ta.value.length}
+function outHTML(h){$("#judge-body").innerHTML=h;$("#judge-body").style.display='';$("#term-out").style.display='none'}
+function showTerm(){ $("#term-out").style.display='';$("#judge-body").style.display='none' }
+function clr(){showTerm();out('')}
 function esc(s){return(s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 // ═══════════════════ CODE HISTORY ═══════════════════
@@ -384,13 +388,19 @@ function showWelcome(){
 // ═══════════════════ OPEN MODULE ═══════════════════
 function openModule(mod){
   curMod=mod;curEx=null;$("#var-panel").classList.remove('on');
-  $("#center").innerHTML='<h1>'+mod.title+'</h1>'+md2html(mod.content_md||"*暂无内容*");
+  // Strip leading # heading from content to avoid duplicate title
+  // (frontmatter title is already shown as <h1>)
+  let content = mod.content_md || "*暂无内容*";
+  content = content.replace(/^# .+\n?/, '').trim();
+  $("#center").innerHTML='<h1>'+mod.title+'</h1>'+md2html(content);
   const blocks=[...(mod.content_md||"").matchAll(/```c\n([\s\S]*?)```/g)];
   let code=DEFAULT_CODE;
   const mainBlock=blocks.find(b=>b[1].includes('int main'));
   if(mainBlock)code=mainBlock[1].trim();
   else if(blocks.length>0)code=blocks[0][1].trim();
   setCode(code);clr();dot('','');$("#btn-submit").style.display="none";$("#btn-reset").style.display="none";
+  // Mark module as viewed for progress tracking
+  api("/api/progress/module/"+mod.slug,{method:"POST"}).then(()=>{progress[mod.slug]="passed";buildCourseTree()});
   $$("#output-pane .otab").forEach(b=>{if(b.dataset.tab==="judge")b.style.display="none"});
   const nav=document.createElement("div");nav.className="lesson-nav";
   const{prev,next}=getAdjacent();
@@ -431,43 +441,145 @@ function showVarPanel(vars){
 $("#btn-inspect").onclick=()=>{const v=inspectVars(getCode());showVarPanel(v);toast(v.length?'检测到 '+v.length+' 个变量':"未检测到变量",v.length?"ok":"warn")};
 $("#var-close").onclick=()=>$("#var-panel").classList.remove('on');
 
-// ═══════════════════ RUN ═══════════════════
-$("#btn-run").onclick=async()=>{
-  const code=getCode();if(!code.trim()||isRunning)return;
-  var hasScan=/scanf/.test(code)||/gets/.test(code);
-  var stdinVal=document.getElementById("stdin-input").value;
-  if(hasScan&&!stdinVal.trim()){out('<div class="hint">⚠ 代码包含 <b>scanf</b>，请在 <b>输入栏</b> 填写数据后再运行</div>');return}
-  isRunning=true;setBtnLoading($("#btn-run"),true);saveCodeHistory(code);
-  out('<span class="s">编译运行中...</span>');
-  $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="out"));
-  try{
-    const r=await api("/api/run",{method:"POST",body:JSON.stringify({code,stdin:document.getElementById("stdin-input").value})});
-    if(r.compile_error){
-      const lines=r.compile_error.split('\n').map(l=>/main\.c:(\d+)/.test(l)?'<span class="erlink" data-line="'+RegExp.$1+'">'+esc(l)+'</span>':esc(l)).join('\n');
-      out('<div style="color:var(--red);font-weight:700;margin-bottom:4px">编译错误</div>\n'+lines+'\n<div class="hint">点击蓝色行号跳转到错误位置</div>');
-      dot('no','编译失败');
-      $$(".erlink").forEach(el=>el.onclick=()=>{
-        const ln=parseInt(el.dataset.line),lines=codeInput.value.split('\n');
-        let pos=0;for(let i=0;i<ln-1;i++)pos+=lines[i].length+1;
-        codeInput.focus();codeInput.setSelectionRange(pos,pos+lines[ln-1].length);
-      });
-    }else if(r.success){
-      out('<div style="color:var(--green);font-weight:700;margin-bottom:4px">运行成功 — '+r.wall_time_ms+'ms</div>\n'+esc(r.stdout||"(无输出)"));
-      dot('ok','运行成功');const v=inspectVars(code);if(v.length)showVarPanel(v);
-      if(!curEx)toast("运行成功！");
-    }else{
-      out('<div style="color:var(--red);font-weight:700;margin-bottom:4px">运行时出错 (退出码 '+r.exit_code+')</div>\n'+esc(r.stderr||""));
-      dot('no','运行出错');
+// ═══════════════════ INTERACTIVE RUN (UNIFIED TERMINAL) ═══════════════════
+let pollTimer=null;
+let _inputStart=0;  // cursor position: user can only type at or after this
+
+function stopInteractive(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+  api("/api/interactive/kill",{method:"POST"});
+  isRunning=false;
+  $("#btn-run").textContent="▶ 运行";
+  $("#btn-run").classList.remove('stopping');
+  $("#stdin-bar").classList.remove('running');
+  // Make terminal read-only again
+  const ta=$("#term-out");
+  ta.readOnly=true;
+  ta.classList.remove('running');
+  _inputStart=0;
+}
+
+// Prevent editing old output — only allow typing at cursor >= _inputStart
+$("#term-out").addEventListener('keydown',function(e){
+  if(!isRunning)return;
+  const ta=this;
+
+  // Allow navigation keys
+  if(e.key==='Home'||e.key==='End'||e.key==='ArrowUp'||e.key==='ArrowDown'||
+     e.key==='ArrowLeft'||e.key==='ArrowRight'||e.ctrlKey||e.metaKey||e.altKey){
+    // ArrowLeft/Up: if cursor would go before _inputStart, prevent
+    if((e.key==='ArrowLeft'||e.key==='ArrowUp'||e.key==='Backspace')&&ta.selectionStart<=_inputStart){
+      e.preventDefault();
     }
-  }catch(e){out('<span style="color:var(--red)">请求失败：'+esc(e.message)+'</span>')}
-  finally{isRunning=false;setBtnLoading($("#btn-run"),false)}
+    return;
+  }
+
+  // Enter: capture input and send to process
+  if(e.key==='Enter'){
+    e.preventDefault();
+    // Keep cursor at end
+    if(ta.selectionStart<_inputStart){ta.selectionStart=ta.selectionEnd=ta.value.length;return}
+    // Get input typed since last program output
+    const input=ta.value.slice(_inputStart);
+    if(!input.trim())return;
+    // Send to stdin
+    api("/api/interactive/input",{method:"POST",body:JSON.stringify({text:input})});
+    // Advance input start past this line (+1 for the Enter newline)
+    ta.value+='\n';
+    _inputStart=ta.value.length;
+    ta.scrollTop=ta.scrollHeight;
+    return;
+  }
+
+  // Prevent typing before _inputStart
+  if(ta.selectionStart<_inputStart){
+    ta.selectionStart=ta.selectionEnd=ta.value.length;
+  }
+});
+
+// Also lock cursor via click/mouseup
+["mouseup","click"].forEach(ev=>$("#term-out").addEventListener(ev,function(){
+  if(!isRunning)return;
+  if(this.selectionStart<_inputStart){
+    this.selectionStart=this.selectionEnd=this.value.length;
+  }
+}));
+
+$("#btn-run").onclick=async()=>{
+  const code=getCode();if(!code.trim())return;
+
+  // If already running, stop it
+  if(isRunning){stopInteractive();showTerm();outAppend('\n--- 程序已停止 ---\n');return}
+
+  isRunning=true;$("#btn-run").textContent="⏹ 停止";$("#btn-run").classList.add('stopping');
+  saveCodeHistory(code);
+  showTerm();
+  out('');  // Clear terminal
+  const ta=$("#term-out");
+  ta.readOnly=false;
+  ta.classList.add('running');
+  ta.focus();
+  _inputStart=0;
+  dot('','');
+  $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="out"));
+
+  // Compile and start
+  const startRes=await api("/api/interactive/start",{method:"POST",body:JSON.stringify({code})});
+
+  if(startRes.status==="compile_error"){
+    const errText=startRes.error||"编译失败";
+    const lines=errText.split('\n').map(l=>/main\.c:(\d+)/.test(l)?'<span class="erlink" data-line="'+RegExp.$1+'">'+esc(l)+'</span>':esc(l)).join('\n');
+    outHTML('<div style="color:var(--red);font-weight:700;margin-bottom:4px">编译错误</div>\n'+lines+'\n<div class="hint">点击蓝色行号跳转到错误位置</div>');
+    dot('no','编译失败');
+    $$(".erlink").forEach(el=>el.onclick=()=>{
+      const ln=parseInt(el.dataset.line),lines=codeInput.value.split('\n');
+      let pos=0;for(let i=0;i<ln-1;i++)pos+=lines[i].length+1;
+      codeInput.focus();codeInput.setSelectionRange(pos,pos+lines[ln-1].length);
+    });
+    stopInteractive();return;
+  }
+
+  if(startRes.status==="error"||startRes.error){
+    out(esc(startRes.error||"启动失败"));
+    stopInteractive();return;
+  }
+
+  // Start polling for output
+  pollTimer=setInterval(async()=>{
+    const res=await api("/api/interactive/poll");
+    if(!res)return;
+
+    // Append new output
+    for(const line of res.lines){
+      outAppend(line.text);
+    }
+
+    if(!res.running){
+      // Process exited
+      clearInterval(pollTimer);pollTimer=null;
+      isRunning=false;
+      $("#btn-run").textContent="▶ 运行";
+      $("#btn-run").classList.remove('stopping');
+      ta.readOnly=true;
+      ta.classList.remove('running');
+      _inputStart=0;
+
+      if(res.exit_code===0){
+        dot('ok','运行成功');const v=inspectVars(code);if(v.length)showVarPanel(v);
+        if(!curEx)toast("运行成功！");
+      }else{
+        outAppend('\n[退出码 '+res.exit_code+']\n');
+        dot('no','退出码 '+res.exit_code);
+      }
+    }
+  },80);
 };
 
 // ═══════════════════ SUBMIT ═══════════════════
 $("#btn-submit").onclick=async()=>{
   if(!curEx||isRunning)return;const code=getCode();if(!code.trim())return;
   isRunning=true;setBtnLoading($("#btn-submit"),true);saveCodeHistory(code);
-  out('<span class="s">判题中...</span>');
+  showTerm();out('判题中...');
   $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="out"));
   try{
     const r=await api("/api/submit",{method:"POST",body:JSON.stringify({code,exercise_id:curEx.id})});
@@ -486,8 +598,8 @@ $("#btn-submit").onclick=async()=>{
       if(tc.passed)h+='<div class="case-ok">✓ 测试 '+tc.case+'</div>';
       else{h+='<div class="case-no">✗ 测试 '+tc.case+'</div>';if(tc.error)h+='<div class="s">  '+esc(tc.error)+'</div>';if(tc.actual)h+='<div class="s">  你的输出：'+esc(tc.actual)+'</div>';if(tc.expected)h+='<div class="s">  预期输出：'+esc(tc.expected)+'</div>'}
     }
-    out(h);await loadData();buildExerciseList(exCurrentFilter);
-  }catch(e){out('<span style="color:var(--red)">请求失败：'+esc(e.message)+'</span>')}
+    outHTML(h);await loadData();buildExerciseList(exCurrentFilter);
+  }catch(e){outHTML('<span style="color:var(--red)">请求失败：'+esc(e.message)+'</span>')}
   finally{isRunning=false;setBtnLoading($("#btn-submit"),false)}
 };
 

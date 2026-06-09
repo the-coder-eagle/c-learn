@@ -1,5 +1,36 @@
 # C Learn — 开发日志
 
+## 2026-06-09 — v3.0.0 交互式终端 + 统一 I/O
+
+### 交互式运行引擎
+- **InteractiveRunner 类**: `subprocess.Popen` + 二进制管道替代批量 `subprocess.run`
+- **零缓冲 printf**: 编译时注入 `__wrap.c`，`-Dprintf=__flush_printf` 预处理器宏替换 + `WriteFile`/`FlushFileBuffers` 直写管道
+- **逐字节读取**: `pipe.read(1)` 替代 `read(256)` 解决 Windows 管道阻塞问题
+- 新增 API: `/api/interactive/start` `/poll` `/input` `/kill`
+
+### 统一终端 (CLion 风格)
+- 输出区改为 `<textarea>` — 输出和输入在同一区域
+- 光标锁定：仅允许在程序输出末尾输入，保护已有输出
+- Enter 发送输入，80ms 轮询实时显示输出
+- 运行时按钮变为 "⏹ 停止"（红色），可随时终止
+
+### Bug 修复
+- 标题重复：`openModule()` 去掉 markdown 正文 `# 标题`
+- 文字复制：CSS `user-select: text` 显式开启
+- 停止按钮：去掉 `setBtnLoading`（不再 disabled）
+- 学习进度：`_writable_dir()` 存储到 exe 目录，不再丢失
+- 课程树进度：模块阅览自动标记，章节显示 N/M
+- 练习题计数：过滤模块 slug，只统计练习 ID
+- 缓存：`@app.after_request` + no-cache 头 + `?v=11`
+
+### 核心文件变更
+- `services.py`: +120 行 (InteractiveRunner + _writable_dir)
+- `server.py`: +60 行 (interactive API + module progress)
+- `web/app.js`: +100 行 (交互式运行 + 统一终端 + 进度)
+- `web/style.css`: 终端 textarea 样式
+- `web/index.html`: textarea 终端替换 div
+
+
 ## 2026-06-09 13:00 — v11 前端重构 + 语法高亮 + 新手引导
 
 ### 前端架构统一

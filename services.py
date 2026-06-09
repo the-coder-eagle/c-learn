@@ -17,10 +17,28 @@ from typing import Optional
 
 # ── Path resolution (dev + PyInstaller) ──────────────────────────
 def _base_dir() -> Path:
-    """Get the project root, handling PyInstaller _MEIPASS."""
+    """Get the project root, handling PyInstaller _MEIPASS.
+
+    For writable files (progress.json), use the directory containing the exe
+    or the current working directory — NEVER write to _MEIPASS (it's temporary).
+    """
     if hasattr(sys, '_MEIPASS'):
-        return Path(sys._MEIPASS)
-    return Path(__file__).parent  # services.py is at project root
+        return Path(sys._MEIPASS)  # Read-only: used for content, tools, etc.
+    return Path(__file__).parent
+
+
+def _writable_dir() -> Path:
+    """Get a persistent writable directory for user data.
+
+    In PyInstaller builds, this is the directory containing the exe.
+    In dev mode, this is the project root.
+    """
+    import __main__
+    if getattr(sys, 'frozen', False):
+        # Running as packaged exe — store data next to the exe
+        return Path(sys.executable).parent
+    # Running from source — store in project root
+    return Path(__file__).parent
 
 def _tcc_exe() -> Optional[str]:
     """Find TCC executable."""
@@ -218,11 +236,11 @@ def compile_and_run(source_code: str, stdin: str = "", timeout: int = 10) -> Com
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def compile_only(source_code: str) -> tuple[bool, str, str]:
+def compile_only(source_code: str, strict: bool = True) -> tuple[bool, str, str]:
     """
     Compile to a temp binary. Returns (success, binary_path, error_message).
     """
-    safe, msg = _scan_source(source_code, strict=True)  # strict for submission
+    safe, msg = _scan_source(source_code, strict=strict)  # strict for submission, relaxed for free play
     if not safe:
         return False, "", msg
 
@@ -481,6 +499,187 @@ def _parse_error_lines(raw_stderr: str) -> list[dict]:
     return results
 
 
+# ── Interactive Runner ──────────────────────────────────────────────
+
+import threading as _threading
+
+class InteractiveRunner:
+    """Runs a compiled C program interactively with streaming I/O.
+
+    Uses subprocess.Popen with pipes so the frontend can stream output
+    and send stdin input while the program is running (like a real terminal).
+    """
+    def __init__(self):
+        self.process = None
+        self.tmpdir = None
+        self._output_lock = _threading.Lock()
+        self._output_lines = []  # list of {"type":"stdout"|"stderr","text":str}
+        self.running = False
+        self.exit_code = None
+
+    def start(self, source_code: str) -> dict:
+        """Compile and launch the binary. Returns {status, error?}."""
+        code = source_code
+
+        # Security scan (relaxed for free play)
+        safe, msg = _scan_source(code, strict=False)
+        if not safe:
+            return {"status": "compile_error", "error": msg}
+
+        # ── Compile with OS-level printf ──
+        # TCC's libc printf may buffer when stdout is a pipe, and overriding
+        # printf at link time is unreliable. Instead we use a unique function
+        # name (__flush_printf) and tell the preprocessor to replace every
+        # printf call with it via -D. This guarantees our direct-write
+        # implementation is used, with zero symbol conflicts.
+        tcc = _tcc_exe()
+        if not tcc:
+            return {"status": "compile_error", "error": "TCC compiler not found"}
+
+        tmpdir = tempfile.mkdtemp(prefix="clearn_")
+        ext = ".exe" if os.name == "nt" else ".out"
+        binary = str(Path(tmpdir) / f"a{ext}")
+
+        # Wrapper: __flush_printf uses WriteFile + FlushFileBuffers to
+        # write directly to the stdout pipe, bypassing all C stdio buffering.
+        # Compiler -D flags redirect printf/puts to our implementations.
+        wrapper_src = (
+            '#include <stdio.h>\n'
+            '#include <stdarg.h>\n'
+            '#include <windows.h>\n'
+            'int __flush_printf(const char *f,...) {\n'
+            '    char b[8192];va_list a;va_start(a,f);\n'
+            '    int r=vsnprintf(b,sizeof(b),f,a);va_end(a);\n'
+            '    if(r>0) {\n'
+            '        HANDLE h=GetStdHandle(STD_OUTPUT_HANDLE);\n'
+            '        DWORD w;WriteFile(h,b,r,&w,NULL);\n'
+            '        FlushFileBuffers(h);\n'
+            '    }\n'
+            '    return r;\n'
+            '}\n'
+            'int __flush_puts(const char *s) {\n'
+            '    int r=__flush_printf("%s\\n",s);return r>=0?r:r;\n'
+            '}\n'
+        )
+        wrapper_path = str(Path(tmpdir) / "__wrap.c")
+        Path(wrapper_path).write_text(wrapper_src, encoding="utf-8")
+
+        # Write user's source
+        src_path = str(Path(tmpdir) / "main.c")
+        Path(src_path).write_text(code, encoding="utf-8")
+
+        # Compile: -D flags redirect printf→__flush_printf, puts→__flush_puts
+        compile_proc = subprocess.run(
+            [tcc, "-std=c11",
+             "-Dprintf=__flush_printf", "-Dputs=__flush_puts",
+             "-o", binary, wrapper_path, src_path],
+            capture_output=True, timeout=15, text=True,
+            **_subprocess_kwargs(),
+        )
+        if compile_proc.returncode != 0:
+            raw = compile_proc.stderr[:5000] if compile_proc.stderr else ""
+            clean = re.sub(r'[A-Z]:[^\s]*?/(__wrap|main)\.c:\d+: ', '', raw).strip()
+            import shutil as _shutil
+            _shutil.rmtree(tmpdir, ignore_errors=True)
+            return {"status": "compile_error", "error": _translate_error(clean or "Compilation failed")}
+
+        # Start the binary with pipes (binary mode — no extra buffering)
+        try:
+            self.process = subprocess.Popen(
+                [binary],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                **_subprocess_kwargs(),
+            )
+            self.tmpdir = str(Path(binary).parent)
+            self.running = True
+            self.exit_code = None
+            self._output_lines.clear()
+
+            # Launch reader threads
+            _threading.Thread(target=self._reader, args=(self.process.stdout, "stdout"), daemon=True).start()
+            _threading.Thread(target=self._reader, args=(self.process.stderr, "stderr"), daemon=True).start()
+            # Monitor thread for exit
+            _threading.Thread(target=self._monitor, daemon=True).start()
+
+            return {"status": "started"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    def _reader(self, pipe, pipe_type: str):
+        """Read raw bytes one at a time and push to buffer.
+
+        On Windows pipes, read(256) blocks until the requested size is
+        available — but read(1) returns immediately when any data arrives.
+        This is critical for real-time interactive I/O.
+        """
+        try:
+            while True:
+                byte = pipe.read(1)  # 1-byte reads — never blocks on Windows pipes
+                if not byte:  # EOF
+                    break
+                text = byte.decode('utf-8', errors='replace')
+                with self._output_lock:
+                    self._output_lines.append({"type": pipe_type, "text": text})
+        except (ValueError, OSError):
+            pass  # Pipe closed
+
+    def _monitor(self):
+        """Wait for process exit, update state, and clean up."""
+        try:
+            self.process.wait()
+        except Exception:
+            pass
+        self.exit_code = self.process.returncode
+        self.running = False
+        # Clean up temp dir
+        if self.tmpdir:
+            import shutil as _shutil
+            _shutil.rmtree(self.tmpdir, ignore_errors=True)
+            self.tmpdir = None
+
+    def poll(self) -> dict:
+        """Return new output since last poll, plus process status."""
+        with self._output_lock:
+            lines = self._output_lines[:]
+            self._output_lines.clear()
+        return {
+            "running": self.running,
+            "exit_code": self.exit_code,
+            "lines": lines,
+        }
+
+    def send_input(self, text: str):
+        """Write text + newline to the process's stdin (binary pipe)."""
+        if self.process and self.running and self.process.stdin:
+            try:
+                data = (text + '\n').encode('utf-8')
+                self.process.stdin.write(data)
+                self.process.stdin.flush()
+                return True
+            except (OSError, ValueError):
+                return False
+        return False
+
+    def kill(self):
+        """Forcefully terminate the running process."""
+        if self.process:
+            try:
+                self.process.kill()
+            except Exception:
+                pass
+            self.running = False
+        if self.tmpdir:
+            import shutil as _shutil
+            _shutil.rmtree(self.tmpdir, ignore_errors=True)
+            self.tmpdir = None
+
+
+# Global singleton (one desktop window = one session)
+_runner: InteractiveRunner = None
+
+
 # ── Course content loading ────────────────────────────────────────
 
 import yaml
@@ -611,7 +810,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 import json as _json
 
-_PROGRESS_FILE = _base_dir() / "progress.json"
+_PROGRESS_FILE = _writable_dir() / "progress.json"
 
 def load_progress() -> dict:
     """Load exercise progress from local JSON."""

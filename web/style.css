@@ -127,6 +127,7 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 .flt-row button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ═══════════════════ CONTENT ═══════════════════ */
+#center,#out-body,#viz-memory,#viz-hints,#viz-output{-webkit-user-select:text;user-select:text}
 #center h1{font-size:1.4em;margin-bottom:12px;font-weight:700}
 #center h2{font-size:1.15em;margin:18px 0 8px}
 #center h3{font-size:1em;margin:12px 0 4px}
@@ -158,9 +159,11 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 .ed-toolbar .sz-btn{width:26px;height:26px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all var(--trans)}
 .ed-toolbar .sz-btn:hover{background:var(--bg-hover);color:var(--text2)}
 .ed-toolbar button{padding:5px 14px;border-radius:6px;border:none;font-size:var(--fs-sm);font-weight:600;cursor:pointer;font-family:var(--font);min-height:28px;transition:all var(--trans)}
-.btn-run{background:var(--accent);color:#fff;font-size:var(--fs-md);padding:6px 18px}
+.btn-run{background:var(--accent);color:#fff;font-size:var(--fs-md);padding:6px 18px;transition:all var(--trans)}
 .btn-run:hover{background:var(--accent2);transform:translateY(-1px)}
 .btn-run.loading{opacity:.7;pointer-events:none}
+.btn-run.stopping{background:var(--red)!important}
+.btn-run.stopping:hover{background:#ff5252!important}
 .btn-sub{background:var(--green);color:#fff}
 .btn-sub:hover{background:#5de07e}
 .btn-sub.loading{opacity:.7;pointer-events:none}
@@ -206,6 +209,10 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 #stdin-bar.need{background:rgba(255,179,71,.12)}
 #stdin-bar.need span{color:var(--amber)}
 #stdin-bar.need textarea{border-color:var(--amber)}
+#stdin-bar.running{border-top:2px solid var(--accent)}
+#stdin-bar.running span{color:var(--accent)}
+#stdin-bar.running textarea{border-color:var(--accent);animation:pulse-border 1.5s infinite}
+@keyframes pulse-border{0%,100%{border-color:var(--accent)}50%{border-color:var(--accent2)}}
 #stdin-bar span{font-size:var(--fs-xs);color:var(--text3);white-space:nowrap;font-weight:600}
 #stdin-bar textarea{flex:1;background:var(--bg-editor);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-family:var(--mono);font-size:12px;resize:none;outline:none}
 #stdin-bar textarea:focus{border-color:var(--accent)}
@@ -216,13 +223,21 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 .out-hd .otab{padding:3px 10px;border-radius:4px;cursor:pointer;border:none;background:none;color:var(--text3);font-size:var(--fs-xs);font-family:var(--font);transition:all var(--trans);min-height:22px}
 .out-hd .otab:hover{color:var(--text2)}
 .out-hd .otab.on{background:var(--accent);color:#fff}
-#out-body{flex:1;padding:10px 16px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;color:var(--text2);word-break:break-all}
-#out-body .ok-big{font-size:1.4em;font-weight:700;color:var(--green);text-align:center;padding:14px;font-family:var(--font)}
-#out-body .no-big{font-size:1.4em;font-weight:700;color:var(--red);text-align:center;padding:14px;font-family:var(--font)}
-#out-body .case-ok{color:var(--green)}#out-body .case-no{color:var(--red)}
-#out-body .erlink{color:var(--accent2);text-decoration:underline;cursor:pointer}
-#out-body .s{color:var(--text3);font-size:10px}
-#out-body .hint{color:var(--amber)}
+
+/* Terminal textarea — unified output + input (CLion-like) */
+#term-out{flex:1;padding:10px 16px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--text2);background:var(--bg-editor);border:none;outline:none;resize:none;tab-size:4}
+#term-out:focus{outline:none}
+#term-out::placeholder{color:var(--text3)}
+#term-out.running{caret-color:var(--accent)}
+
+/* Judge results — formatted HTML (hidden by default) */
+#judge-body{flex:1;padding:10px 16px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;color:var(--text2);word-break:break-all}
+#judge-body .ok-big{font-size:1.4em;font-weight:700;color:var(--green);text-align:center;padding:14px;font-family:var(--font)}
+#judge-body .no-big{font-size:1.4em;font-weight:700;color:var(--red);text-align:center;padding:14px;font-family:var(--font)}
+#judge-body .case-ok{color:var(--green)}#judge-body .case-no{color:var(--red)}
+#judge-body .erlink{color:var(--accent2);text-decoration:underline;cursor:pointer}
+#judge-body .s{color:var(--text3);font-size:10px}
+#judge-body .hint{color:var(--amber)}
 
 /* ═══════════════════ HISTORY ═══════════════════ */
 .history-wrap{position:relative;display:inline-block}
