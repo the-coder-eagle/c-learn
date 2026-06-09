@@ -243,10 +243,11 @@ function saveCodeHistory(code){
 function loadCodeHistory(){
   try{return JSON.parse(localStorage.getItem('c-code-hist')||'[]')}catch(e){return[]}
 }
+function fmtTime(ts){const d=Math.floor((Date.now()-ts)/6e4);if(d<1)return'刚刚';if(d<60)return d+'分钟前';if(d<1440)return Math.floor(d/60)+'小时前';return Math.floor(d/1440)+'天前'}
 function showHistoryMenu(){
   const menu=$("#history-menu"),hist=loadCodeHistory();
   if(!hist.length){menu.innerHTML='<div class="h-empty">暂无历史记录</div>'}
-  else{menu.innerHTML=hist.map((h,i)=>'<div class="h-item" data-i="'+i+'" title="点击恢复此代码">'+esc(h.code.slice(0,80))+'...</div>').join('')}
+  else{menu.innerHTML=hist.map((h,i)=>'<div class="h-item" data-i="'+i+'"><span class="h-code">'+esc(h.code.slice(0,100))+'</span><span class="h-time">'+fmtTime(h.time)+'</span></div>').join('')}
   menu.classList.toggle('on');
   $$("#history-menu .h-item").forEach(el=>el.onclick=()=>{const i=parseInt(el.dataset.i);setCode(hist[i].code);menu.classList.remove('on');toast('代码已恢复')});
 }
