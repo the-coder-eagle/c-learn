@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v3.0.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-v3.1.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/tests-40%20passed-brightgreen?style=flat-square" alt="tests">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey?style=flat-square" alt="platform">
@@ -332,6 +332,7 @@ preprocessor · expert · data-structures
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| **v3.1.0** | 2026-06-09 | 🐛 历史按钮菜单裁切修复 + 判题/运行结果标签页切换 + 提交后正确高亮判题标签 |
 | **v3.0.0** | 2026-06-09 | 🖥️ 交互式终端（CLion 风格）：`printf` 实时输出 + `scanf` 同框输入 + `WriteFile`/`FlushFileBuffers` 零缓冲管道 + 统一 textarea 终端 + 停止按钮 + 进度持久化修复 + 课程树进度 |
 | **v2.0.0** | 2026-06-07 | 📊 项目评估后修正：模拟引擎完善 + 全局测试覆盖 + `.env` 配置 |
 | **v11** | 2026-06-09 | 🎨 语法高亮（8 种 Token）+ 新手 4 步引导 + 进度仪表盘 + 前端重构（零内联代码） |

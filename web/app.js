@@ -248,10 +248,10 @@ function showHistoryMenu(){
   const menu=$("#history-menu"),hist=loadCodeHistory();
   if(!hist.length){menu.innerHTML='<div class="h-empty">暂无历史记录</div>'}
   else{menu.innerHTML=hist.map((h,i)=>'<div class="h-item" data-i="'+i+'"><span class="h-code">'+esc(h.code.slice(0,100))+'</span><span class="h-time">'+fmtTime(h.time)+'</span></div>').join('')}
-  menu.classList.toggle('on');
+  menu.classList.add('on');
   $$("#history-menu .h-item").forEach(el=>el.onclick=()=>{const i=parseInt(el.dataset.i);setCode(hist[i].code);menu.classList.remove('on');toast('代码已恢复')});
 }
-$("#btn-history").onclick=(e)=>{e.stopPropagation();showHistoryMenu();};
+$("#btn-history").onclick=(e)=>{e.stopPropagation();const m=$("#history-menu");if(m.classList.contains('on'))m.classList.remove('on');else showHistoryMenu();};
 document.addEventListener('click',e=>{if(!e.target.closest('.history-wrap'))$("#history-menu").classList.remove('on')});
 
 // ═══════════════════ API ═══════════════════
@@ -584,7 +584,7 @@ $("#btn-submit").onclick=async()=>{
   if(!curEx||isRunning)return;const code=getCode();if(!code.trim())return;
   isRunning=true;setBtnLoading($("#btn-submit"),true);saveCodeHistory(code);
   showTerm();out('判题中...');
-  $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="out"));
+  $$("#output-pane .otab").forEach(b=>b.classList.toggle("on",b.dataset.tab==="judge"));
   try{
     const r=await api("/api/submit",{method:"POST",body:JSON.stringify({code,exercise_id:curEx.id})});
     let h="";
@@ -612,6 +612,16 @@ $("#btn-reset").onclick=async()=>{
   if(!curEx)return;const d=await api('/api/exercise/'+curEx.id);
   setCode(d.template_code||"");clr();dot('','');toast("代码已重置");
 };
+
+// Output tab switching
+$$("#output-pane .otab[data-tab]").forEach(b=>b.onclick=()=>{
+  if(b.dataset.tab==="out")showTerm();
+  else if(b.dataset.tab==="judge"){
+    $("#term-out").style.display='none';
+    $("#judge-body").style.display='';
+  }
+  $$("#output-pane .otab[data-tab]").forEach(x=>x.classList.toggle("on",x===b));
+});
 
 // Clear output
 $("#tab-clear").onclick=()=>{clr();dot('','')};
