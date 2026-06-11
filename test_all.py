@@ -702,6 +702,139 @@ class TestVizExamplesAPI(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
 
 
+class TestSimulatorV4(unittest.TestCase):
+    """v4.1: step_back 变量恢复 + 逻辑运算符回归测试"""
+
+    def test_step_back_restores_variable_value(self):
+        """step_back 正确恢复变量值（回归测试）"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 5;
+    a = 10;
+    printf("%d", a);
+    return 0;
+}""")
+        # Step to a=5 then a=10
+        for _ in range(4):
+            sim.step()
+        state = sim._get_state()
+        var_vals = {v["name"]: v["value"] for v in state["variables"]}
+        self.assertEqual(var_vals.get("a"), "10", "a should be 10 after a=10")
+
+        # Step back should restore a=5
+        back = sim.step_back()
+        var_vals_back = {v["name"]: v["value"] for v in back["variables"]}
+        self.assertEqual(var_vals_back.get("a"), "5",
+                         "step_back MUST restore a to 5 (was 10)")
+
+    def test_step_back_multiple_steps(self):
+        """连续多步回退正确"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int x = 1;
+    x = 2;
+    x = 3;
+    printf("%d", x);
+    return 0;
+}""")
+        for _ in range(6):
+            sim.step()
+        state = sim._get_state()
+        self.assertEqual({v["name"]: v["value"] for v in state["variables"]}.get("x"), "3")
+        # Back 3 times: should go to x=1
+        for _ in range(3):
+            sim.step_back()
+        back = sim._get_state()
+        self.assertEqual({v["name"]: v["value"] for v in back["variables"]}.get("x"), "1")
+
+    def test_and_operator(self):
+        """&& 逻辑与"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 5;
+    int b = 10;
+    if (a > 0 && b > 5) {
+        printf("both");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("both", state["output"])
+
+    def test_or_operator(self):
+        """|| 逻辑或"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 5;
+    if (a > 10 || a < 10) {
+        printf("either");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("either", state["output"])
+
+    def test_not_operator(self):
+        """! 逻辑非"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 5;
+    if (!(a > 10)) {
+        printf("not");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("not", state["output"])
+
+    def test_complex_condition(self):
+        """复合条件: && + || + ()"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 5;
+    int b = 0;
+    if ((a > 0 && b == 0) || a > 10) {
+        printf("complex");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("complex", state["output"])
+
+
+class TestInteractiveRunner(unittest.TestCase):
+    """v4.1: 交互式运行器基础测试"""
+
+    def test_start_and_kill(self):
+        """启动和终止交互式进程"""
+        from services import InteractiveRunner
+        runner = InteractiveRunner()
+        result = runner.start('#include <stdio.h>\nint main() { printf("hi"); return 0; }')
+        self.assertIn(result["status"], ["started", "compile_error"],
+                      f"Expected started or compile_error, got {result['status']}")
+        if result["status"] == "started":
+            # Wait briefly for output
+            import time
+            time.sleep(0.3)
+            poll = runner.poll()
+            self.assertTrue(poll["running"] or poll["exit_code"] is not None)
+            runner.kill()
+
+    def test_compile_error(self):
+        """交互式运行编译错误"""
+        from services import InteractiveRunner
+        runner = InteractiveRunner()
+        result = runner.start('#include <stdio.h>\nint main() { printf("x")\n }')
+        self.assertEqual(result["status"], "compile_error")
+        self.assertTrue(result.get("error"))
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("C Learn — 全局自动化测试")

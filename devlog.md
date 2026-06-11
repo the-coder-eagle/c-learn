@@ -1,5 +1,31 @@
 # C Learn — 开发日志
 
+## 2026-06-11 — v4.1 全面优化 + 测试扩展
+
+### 代码重构
+- `simulator.py`: `_parse()` 180行 → 拆分为 `_add_line()` + `_parse_brace_line()` + `_parse_control_flow()` + 主循环40行
+- `simulator.py`: `_eval_condition` 支持 `&&`/`||`/`!` 逻辑运算符 + 嵌套括号
+- `simulator.py`: `_handle_brace_close` switch 检测移除硬编码50行限制 → 使用 `_brace_map`
+
+### 测试扩展 (61→69 tests)
+- `TestSimulatorV4` (6 个新测试):
+  - `test_step_back_restores_variable_value` — 回归：回退恢复变量值
+  - `test_step_back_multiple_steps` — 连续多步回退
+  - `test_and_operator` / `test_or_operator` / `test_not_operator` — &&/||/!
+  - `test_complex_condition` — 复合条件 (&&+||+括号)
+- `TestInteractiveRunner` (2 个新测试):
+  - `test_start_and_kill` — 启动和终止
+  - `test_compile_error` — 编译错误
+
+### 基础设施
+- 创建 `.env` 文件 (CLEARN_LANG=zh + 所有默认配置)
+- 更新 `README.md` → v4.0 详细文档
+
+### 测试
+- **69 tests, 100% pass, 3.2s**
+
+---
+
 ## 2026-06-11 — v4.0 全局 Debug + 优化 + UI 修复 + 内容极大扩展 + 打包
 
 ### 课程内容极大扩展 (v4.0 核心)

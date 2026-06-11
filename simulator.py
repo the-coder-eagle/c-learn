@@ -221,184 +221,184 @@ class CSimulator:
         self._return_stack: list[int] = []  # 返回地址栈
         self._parse()
 
+    # ── 解析辅助 ──────────────────────────────────────
+    def _add_line(self, raw, stripped, stype, data=None):
+        """向 _lines 添加一条解析后的行。用 raw 的长度统一标记。"""
+        n = len(self._raw.split('\n'))
+        self._lines.append((n, raw, stype, data or {}))
+
+    def _parse_brace_line(self, stripped: str, brace_stack: list) -> bool:
+        """处理大括号和 else 行。返回 True 表示已处理，调用者应 continue。"""
+        line_idx = len(self._lines)
+
+        # Standalone braces
+        if stripped == '{':
+            self._add_line('', stripped, "brace_open")
+            brace_stack.append(line_idx)
+            return True
+        if stripped == '}':
+            self._add_line('', stripped, "brace_close")
+            if brace_stack:
+                open_idx = brace_stack.pop()
+                self._brace_map[open_idx] = line_idx
+                self._brace_map[line_idx] = open_idx
+            return True
+
+        # } else / } else {
+        m = re.match(r'\}\s*else\s*(\{?)\s*$', stripped)
+        if m:
+            has_brace = m.group(1) == '{'
+            self._add_line('', stripped, "brace_close")
+            if brace_stack:
+                open_idx = brace_stack.pop()
+                self._brace_map[open_idx] = line_idx
+                self._brace_map[line_idx] = open_idx
+            self._add_line('', stripped, "else_kw")
+            if has_brace:
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+
+        # Standalone else / else {
+        if stripped in ('else', 'else {'):
+            self._add_line('', stripped, "else_kw")
+            if stripped == 'else {':
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+        return False
+
+    def _parse_control_flow(self, stripped: str, brace_stack: list) -> bool:
+        """处理 if/while/for/do-while/switch/break/continue/case。返回 True 表示已处理。"""
+        line_idx = len(self._lines)
+
+        # if (cond) / if (cond) {
+        m = re.match(r'if\s*\((.+)\)\s*(\{?)\s*$', stripped)
+        if m:
+            cond, brace = m.group(1).strip(), m.group(2)
+            self._add_line('', stripped, "if_start", {"condition": cond})
+            if brace == '{':
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+
+        # while (cond) / while (cond) {
+        m = re.match(r'while\s*\((.+)\)\s*(\{?)\s*$', stripped)
+        if m:
+            cond, brace = m.group(1).strip(), m.group(2)
+            self._add_line('', stripped, "while_start", {"condition": cond})
+            if brace == '{':
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+
+        # for (init; cond; incr) / for (init; cond; incr) {
+        m = re.match(r'for\s*\((.+);\s*(.+);\s*(.+)\)\s*(\{?)\s*$', stripped)
+        if m:
+            init, cond, incr, brace = m.groups()
+            self._add_line('', stripped, "for_start",
+                          {"init": init.strip(), "cond": cond.strip(), "incr": incr.strip()})
+            if brace == '{':
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+
+        # do / do {
+        if re.match(r'do\s*\{?\s*$', stripped):
+            self._add_line('', stripped, "do_start")
+            if stripped.endswith('{'):
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+
+        # } while (cond);
+        m = re.match(r'\}\s*while\s*\((.+)\)\s*;\s*$', stripped)
+        if m:
+            cond = m.group(1).strip()
+            self._add_line('', stripped, "brace_close")
+            if brace_stack:
+                open_idx = brace_stack.pop()
+                self._brace_map[open_idx] = line_idx
+                self._brace_map[line_idx] = open_idx
+            self._add_line('', stripped, "while_check", {"condition": cond})
+            return True
+
+        # switch (expr) / switch (expr) {
+        m = re.match(r'switch\s*\((.+)\)\s*\{?\s*$', stripped)
+        if m:
+            self._add_line('', stripped, "switch_start", {"expr": m.group(1).strip()})
+            if stripped.endswith('{'):
+                idx = len(self._lines)
+                self._add_line('', stripped, "brace_open")
+                brace_stack.append(idx)
+            return True
+
+        # break;
+        if re.match(r'break\s*;\s*$', stripped):
+            self._add_line('', stripped, "break_kw")
+            return True
+
+        # continue;
+        if re.match(r'continue\s*;\s*$', stripped):
+            self._add_line('', stripped, "continue_kw")
+            return True
+
+        # case N:
+        m = re.match(r'case\s+(.+)\s*:\s*$', stripped)
+        if m:
+            self._add_line('', stripped, "case_label", {"value": m.group(1).strip()})
+            return True
+
+        # default:
+        if re.match(r'default\s*:\s*$', stripped):
+            self._add_line('', stripped, "default_label")
+            return True
+        return False
+
     # ── 解析 ──────────────────────────────────────────
     def _parse(self):
-        """将代码分解为可执行的行列表，同时建立大括号配对映射"""
+        """将代码分解为可执行的行列表，同时建立大括号配对映射。"""
         raw_lines = self._raw.split('\n')
         self._lines = []
-        brace_stack = []  # stack of (brace_line_index)
+        brace_stack = []
 
         for raw in raw_lines:
             stripped = raw.strip()
-            line_idx = len(self._lines)  # index this line will have
-
             if not stripped:
-                self._lines.append((len(raw_lines), raw, "empty"))
+                self._add_line(raw, stripped, "empty")
                 continue
-
-            # 跳过 include 和注释
             if stripped.startswith('#') or stripped.startswith('//'):
-                self._lines.append((len(raw_lines), raw, "skip"))
+                self._add_line(raw, stripped, "skip")
                 continue
 
-            # 函数定义头
-            func_match = re.match(
-                r'(void|int)\s+(\w+)\s*\(([^)]*)\)\s*\{?\s*$', stripped)
-            if func_match:
-                ret_type, name, params = func_match.groups()
-                self._func_map[name] = line_idx  # record function location
-                self._lines.append((len(raw_lines), raw, "func_def",
-                                    {"name": name, "params": params}))
+            # 函数定义
+            fm = re.match(r'(void|int)\s+(\w+)\s*\(([^)]*)\)\s*\{?\s*$', stripped)
+            if fm:
+                _, name, params = fm.groups()
+                self._func_map[name] = len(self._lines)
+                self._add_line(raw, stripped, "func_def", {"name": name, "params": params})
                 continue
 
-            # 大括号 — 建立配对 (standalone)
-            if stripped == '{':
-                self._lines.append((len(raw_lines), raw, "brace_open"))
-                brace_stack.append(line_idx)
+            # 大括号 / else
+            if self._parse_brace_line(stripped, brace_stack):
                 continue
 
-            if stripped == '}':
-                self._lines.append((len(raw_lines), raw, "brace_close"))
-                if brace_stack:
-                    open_idx = brace_stack.pop()
-                    self._brace_map[open_idx] = line_idx
-                    self._brace_map[line_idx] = open_idx
-                continue
-
-            # "} else {" or "} else" — closes if body, opens else body
-            else_match = re.match(r'\}\s*else\s*(\{?)\s*$', stripped)
-            if else_match:
-                has_brace = else_match.group(1) == '{'
-                # 1) brace_close — closes if body
-                self._lines.append((len(raw_lines), raw, "brace_close"))
-                if brace_stack:
-                    open_idx = brace_stack.pop()
-                    self._brace_map[open_idx] = line_idx
-                    self._brace_map[line_idx] = open_idx
-                line_idx += 1  # next entry
-                # 2) else_kw
-                self._lines.append((len(raw_lines), raw, "else_kw"))
-                # 3) if } else { has opening brace, push it
-                if has_brace:
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # Standalone else
-            if stripped in ('else', 'else {'):
-                self._lines.append((len(raw_lines), raw, "else_kw"))
-                if stripped == 'else {':
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # if (condition) { — may have brace on same line
-            if_match = re.match(r'if\s*\((.+)\)\s*(\{?)\s*$', stripped)
-            if if_match:
-                condition = if_match.group(1).strip()
-                has_brace = if_match.group(2) == '{'
-                self._lines.append((len(raw_lines), raw, "if_start",
-                                    {"condition": condition}))
-                if has_brace:
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # while (condition) { — may have brace on same line
-            while_match = re.match(r'while\s*\((.+)\)\s*(\{?)\s*$', stripped)
-            if while_match:
-                condition = while_match.group(1).strip()
-                has_brace = while_match.group(2) == '{'
-                self._lines.append((len(raw_lines), raw, "while_start",
-                                    {"condition": condition}))
-                if has_brace:
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # for (init; cond; incr) { — may have brace on same line
-            for_match = re.match(r'for\s*\((.+);\s*(.+);\s*(.+)\)\s*(\{?)\s*$', stripped)
-            if for_match:
-                init, cond, incr, maybe_brace = for_match.groups()
-                has_brace = maybe_brace == '{'
-                self._lines.append((len(raw_lines), raw, "for_start",
-                                    {"init": init.strip(), "cond": cond.strip(),
-                                     "incr": incr.strip()}))
-                if has_brace:
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # do { — do-while loop start
-            do_match = re.match(r'do\s*\{?\s*$', stripped)
-            if do_match:
-                self._lines.append((len(raw_lines), raw, "do_start"))
-                if stripped.endswith('{'):
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # } while (cond); — do-while condition check
-            dw_match = re.match(r'\}\s*while\s*\((.+)\)\s*;\s*$', stripped)
-            if dw_match:
-                cond = dw_match.group(1).strip()
-                self._lines.append((len(raw_lines), raw, "brace_close"))
-                if brace_stack:
-                    open_idx = brace_stack.pop()
-                    self._brace_map[open_idx] = line_idx
-                    self._brace_map[line_idx] = open_idx
-                line_idx += 1
-                self._lines.append((len(raw_lines), raw, "while_check",
-                                    {"condition": cond}))
-                continue
-
-            # break;
-            if re.match(r'break\s*;\s*$', stripped):
-                self._lines.append((len(raw_lines), raw, "break_kw"))
-                continue
-
-            # continue;
-            if re.match(r'continue\s*;\s*$', stripped):
-                self._lines.append((len(raw_lines), raw, "continue_kw"))
-                continue
-
-            # switch (expr) {
-            sw_match = re.match(r'switch\s*\((.+)\)\s*\{?\s*$', stripped)
-            if sw_match:
-                expr = sw_match.group(1).strip()
-                has_brace = stripped.endswith('{')
-                self._lines.append((len(raw_lines), raw, "switch_start",
-                                    {"expr": expr}))
-                if has_brace:
-                    line_idx += 1
-                    self._lines.append((len(raw_lines), raw, "brace_open"))
-                    brace_stack.append(line_idx)
-                continue
-
-            # case N: or default:
-            case_match = re.match(r'case\s+(.+)\s*:\s*$', stripped)
-            if case_match:
-                self._lines.append((len(raw_lines), raw, "case_label",
-                                    {"value": case_match.group(1).strip()}))
-                continue
-
-            if re.match(r'default\s*:\s*$', stripped):
-                self._lines.append((len(raw_lines), raw, "default_label"))
+            # 控制流
+            if self._parse_control_flow(stripped, brace_stack):
                 continue
 
             # 普通语句
             if stripped.endswith(';'):
                 stmt_type = self._classify_stmt(stripped, None)
-                self._lines.append(
-                    (len(raw_lines), raw, stmt_type, {"func": None}))
+                self._add_line(raw, stripped, stmt_type, {"func": None})
             else:
-                self._lines.append((len(raw_lines), raw, "unknown"))
+                self._add_line(raw, stripped, "unknown")
 
     def _classify_stmt(self, stmt: str, func: Optional[str]) -> str:
         """分类语句类型"""
@@ -474,18 +474,61 @@ class CSimulator:
 
     # ── 条件求值 ──────────────────────────────────────
     def _eval_condition(self, cond: str) -> bool:
-        """Evaluate a C boolean expression like 'a > 3', 'i < 10', '*p != 0'.
+        """Evaluate C boolean expressions. v4.1: supports &&, ||, !, comparisons.
 
-        Supports: >, <, >=, <=, ==, !=, simple variables, dereferences, literals.
-        Returns True/False.
+        Precedence: ! > comparisons (>, <, >=, <=, ==, !=) > && > ||
         """
         cond = cond.strip()
+        if not cond:
+            return False
 
-        # Handle parenthesized expressions
-        if cond.startswith('(') and cond.endswith(')'):
-            return self._eval_condition(cond[1:-1])
+        # Strip outer parentheses
+        while cond.startswith('(') and cond.endswith(')'):
+            # Check if the closing paren matches the opening one
+            depth = 0
+            matched = True
+            for i, ch in enumerate(cond):
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                if depth == 0 and i < len(cond) - 1:
+                    matched = False
+                    break
+            if matched:
+                cond = cond[1:-1].strip()
+            else:
+                break
 
-        # Try each operator (longest first to avoid > matching >=)
+        # Unary NOT: !expr
+        if cond.startswith('!'):
+            return not self._eval_condition(cond[1:].strip())
+
+        # Logical OR: a || b  (lowest precedence)
+        depth = 0
+        for i, ch in enumerate(cond):
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+            elif depth == 0 and i + 1 < len(cond) and cond[i:i+2] == '||':
+                left = cond[:i].strip()
+                right = cond[i+2:].strip()
+                return self._eval_condition(left) or self._eval_condition(right)
+
+        # Logical AND: a && b
+        depth = 0
+        for i, ch in enumerate(cond):
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+            elif depth == 0 and i + 1 < len(cond) and cond[i:i+2] == '&&':
+                left = cond[:i].strip()
+                right = cond[i+2:].strip()
+                return self._eval_condition(left) and self._eval_condition(right)
+
+        # Comparisons
         for op in ['>=', '<=', '!=', '==', '>', '<']:
             if op in cond:
                 left, right = cond.split(op, 1)
@@ -1302,20 +1345,18 @@ class CSimulator:
                         )
                         return loop_start
 
-        # Check if this closes a switch block
+        # Check if this closes a switch block (v4.1: use brace_map, no hard limit)
         if self._switch_active:
-            # Check if this brace_close matches the switch's opening brace
-            for i in range(self._ip - 1, max(self._ip - 50, -1), -1):
-                _, _, st, *_ = self._lines[i] if i < len(self._lines) else ("", "", "skip")
-                if st == "switch_start":
-                    body_open = self._find_brace_open_after(i + 1)
-                    if body_open is not None and body_open in self._brace_map:
-                        if self._brace_map[body_open] == self._ip:
-                            self._switch_active = False
-                            self._case_matched = False
-                            self._switch_value = None
-                            self._hints.append("switch 块结束")
-                    break
+            if self._ip in self._brace_map:
+                open_idx = self._brace_map[self._ip]  # matching {
+                # switch_start is immediately before the opening brace
+                for check in (open_idx - 1, open_idx - 2):
+                    if check >= 0 and self._lines[check][2] == "switch_start":
+                        self._switch_active = False
+                        self._case_matched = False
+                        self._switch_value = None
+                        self._hints.append("switch 块结束")
+                        break
 
         # Check if this closes a function (explicit or implicit return)
         if self._stack:
