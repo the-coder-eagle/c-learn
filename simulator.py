@@ -1053,7 +1053,7 @@ class CSimulator:
             self._hints.append(f"声明变量 {name}，类型 {var_type}，地址 {addr}")
 
     def _handle_var_decl_init(self, raw: str, func: Optional[str]):
-        """int x = 5; 或 int *p = &a; 或 int arr[3] = {1,2,3};"""
+        """int x = 5; 或 int *p = &a; 或 int arr[3] = {1,2,3}; 或 int a=1, b=2;"""
         s = raw.strip().rstrip(';')
 
         # 数组初始化
@@ -1100,6 +1100,43 @@ class CSimulator:
                 self._frame.variables[ptr_name] = var
                 self._hints.append(
                     f"声明指针 {ptr_name}，数组名 {target} 代表首地址 {target_var.address}，{ptr_name} 指向数组首元素")
+            return
+
+        # 逗号声明: int a = 1, b = 2; (v4.1)
+        if s.startswith('int ') and ',' in s:
+            rest = s[4:].strip()  # remove "int "
+            # Split by comma, but not inside expressions
+            declarations = []
+            depth = 0
+            current = ''
+            for ch in rest:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                if ch == ',' and depth == 0:
+                    declarations.append(current.strip())
+                    current = ''
+                else:
+                    current += ch
+            if current.strip():
+                declarations.append(current.strip())
+            hints_parts = []
+            for decl in declarations:
+                eq = decl.find('=')
+                if eq >= 0:
+                    name = decl[:eq].strip().rstrip('*').strip()
+                    expr = decl[eq+1:].strip()
+                    val = self._eval_expr(expr)
+                else:
+                    name = decl.strip()
+                    val = 0
+                addr = self._alloc_addr()
+                var_type = "int*" if '*' in decl else "int"
+                var = Variable(name=name, type=var_type, value=val, address=addr)
+                self._frame.variables[name] = var
+                hints_parts.append(f"{name} = {val}")
+            self._hints.append(f"声明变量: {', '.join(hints_parts)}")
             return
 
         # 普通变量初始化: int x = 5;
