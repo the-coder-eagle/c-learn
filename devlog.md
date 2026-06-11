@@ -1,6 +1,34 @@
 # C Learn — 开发日志
 
-## 2026-06-11 — v4.1 全面优化 + 测试扩展
+## 2026-06-11 — v4.1 全面优化 + 前端模块化 + 测试扩展
+
+### 前端模块化 (v4.1 核心)
+- `web/app.js` 1162行单体 → 5 个模块:
+  - `web/js/utils.js` (10KB) — DOM/API/toast/format/markdown/theme/achievements
+  - `web/js/editor.js` (17KB) — 语法高亮/历史/补全/交互运行/提交
+  - `web/js/course.js` (14KB) — 课程树/习题列表/欢迎页/导航/自由写
+  - `web/js/viz.js` (6KB) — 可视化面板/模拟器交互/示例
+  - `web/js/app.js` (8KB) — 模式切换/侧栏/快捷键/引导/启动
+- `index.html`: 单 `<script>` → 5 个有序加载
+- 全局共享通过 `window._*` 命名空间
+
+### 模拟器增强
+- `_handle_var_decl_init`: 支持逗号声明 `int a=5, b=10;`
+- `_eval_condition`: 支持 `&&`/`||`/`!` + 嵌套括号
+- `_parse()` 180行 → 拆分为 `_add_line()` + `_parse_brace_line()` + `_parse_control_flow()`
+- `_handle_brace_close`: 移除硬编码50行限制 → 使用 `_brace_map`
+
+### 习题搜索增强
+- 新增标签过滤 chip 行 (最多12个标签快捷筛选)
+
+### 测试 (61→69 tests)
+- TestSimulatorV4: step_back回归 + &&/||/! + 复合条件 (6个)
+- TestInteractiveRunner: start/kill + compile_error (2个)
+- test_static_js_files: 更新为模块化检查
+
+### 基础设施
+- 创建 `.env` 文件
+- 69 tests, 100% pass, 3.2s
 
 ### 代码重构
 - `simulator.py`: `_parse()` 180行 → 拆分为 `_add_line()` + `_parse_brace_line()` + `_parse_control_flow()` + 主循环40行

@@ -301,7 +301,7 @@ class TestServerAPI(unittest.TestCase):
         html = r.get_data(as_text=True)
         self.assertIn("C 语言学习平台", html)
         self.assertIn('<link rel="stylesheet" href="/style.css">', html)
-        self.assertIn('src="/app.js', html)  # may have ?v= version param
+        self.assertIn('src="/js/app.js', html)  # v4.1: modular JS
 
     def test_static_css_file(self):
         """style.css 独立文件可访问，包含主题变量和语法高亮配色"""
@@ -313,22 +313,21 @@ class TestServerAPI(unittest.TestCase):
         self.assertIn("focus-visible", css)
         self.assertIn("hl-kw", css)  # syntax highlight token
 
-    def test_static_js_file(self):
-        """app.js 独立文件可访问，包含核心函数"""
-        r = self.client.get("/app.js")
-        self.assertEqual(r.status_code, 200)
-        js = r.get_data(as_text=True)
-        self.assertIn("toggleSidebar", js)
-        self.assertIn("saveCodeHistory", js)
-        self.assertIn("tokenizeLine", js)  # syntax highlight engine
-        self.assertIn("showOnboarding", js)  # onboarding
-        self.assertIn("debouncedHighlight", js)  # v2: debounced highlight
-        self.assertIn("formatCode", js)          # v3: code formatter
-        self.assertIn("showAutocomplete", js)    # v3: autocomplete
-        self.assertIn("checkAchievements", js)   # v3: achievements
-        self.assertIn("exportProgress", js)      # v3: export/import
-        self.assertIn("_historyKey", js)          # v3: per-exercise history
-        self.assertIn("showFreeMode", js)         # v3: free-write mode
+    def test_static_js_files(self):
+        """v4.1: 模块化 JS 文件全部可访问，核心函数分布在各个模块中"""
+        files_checks = {
+            "/js/utils.js": ["esc", "formatCode", "checkAchievements", "exportProgress", "md2html"],
+            "/js/editor.js": ["tokenizeLine", "debouncedHighlight", "saveCodeHistory", "showAutocomplete", "_historyKey"],
+            "/js/course.js": ["buildCourseTree", "openModule", "showWelcome", "_showFreeMode"],
+            "/js/viz.js": ["showVizPanel", "vizLoadCode", "vizRefresh", "EXAMPLES_CODE"],
+            "/js/app.js": ["toggleSidebar", "showOnboarding", "_mode", "toggleShortcuts"],
+        }
+        for path, expected in files_checks.items():
+            r = self.client.get(path)
+            self.assertEqual(r.status_code, 200, f"{path} should be accessible")
+            js = r.get_data(as_text=True)
+            for name in expected:
+                self.assertIn(name, js, f"{name} should be in {path}")
 
 
 class TestSimulator(unittest.TestCase):
