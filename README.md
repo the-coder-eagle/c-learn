@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v3.1.0-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/tests-40%20passed-brightgreen?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/version-v3.3.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/tests-61%20passed-brightgreen?style=flat-square" alt="tests">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey?style=flat-square" alt="platform">
 </p>
@@ -235,7 +235,7 @@ c-learning-platform/
 python test_all.py
 ```
 
-**40 个测试，7 个测试组，100% 通过率：**
+**61 个测试，9 个测试组，100% 通过率：**
 
 | 测试组 | 数量 | 覆盖内容 |
 |--------|------|---------|
@@ -243,10 +243,13 @@ python test_all.py
 | `TestCompileOnly` | 2 | 分离编译 + 独立运行 |
 | `TestJudge` | 5 | AC/WA/CE、多测试点、部分通过 |
 | `TestSecurity` | 4 | system/fork 拦截、自由练习放行 |
+| `TestSecurityRegex` | 5 | 词边界保护、syscall 拦截、内联汇编 |
+| `TestConfig` | 1 | 配置默认值完整性 |
 | `TestContentLoading` | 4 | 课程加载、习题加载、数据完整性 |
 | `TestProgress` | 2 | 进度保存/加载/覆盖 |
 | `TestServerAPI` | 12 | HTTP 端点全覆盖 + 静态文件 |
-| `TestSimulator` | 6 | 初始化、变量创建、指针解引用、回退 |
+| `TestSimulator` | 18 | 变量、指针、回退、if/else、while、for、do-while、break、continue、switch |
+| `TestVizExamplesAPI` | 3 | 9 个可视化示例 API 端点 |
 
 
 ## 🎨 主题配色
@@ -332,6 +335,8 @@ preprocessor · expert · data-structures
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| **v3.3.0** | 2026-06-09 | 🚀 模拟引擎补全 (do-while/break/continue/switch) + 代码美化 + 自动补全 + 成就系统 + 每日一题 + 61 tests |
+| **v3.2.0** | 2026-06-09 | 🔧 全面优化：模拟引擎控制流 (if/else/while/for) + .env 配置 + 安全扫描增强 + 56 测试 100% |
 | **v3.1.0** | 2026-06-09 | 🐛 历史按钮菜单裁切修复 + 判题/运行结果标签页切换 + 提交后正确高亮判题标签 |
 | **v3.0.0** | 2026-06-09 | 🖥️ 交互式终端（CLion 风格）：`printf` 实时输出 + `scanf` 同框输入 + `WriteFile`/`FlushFileBuffers` 零缓冲管道 + 统一 textarea 终端 + 停止按钮 + 进度持久化修复 + 课程树进度 |
 | **v2.0.0** | 2026-06-07 | 📊 项目评估后修正：模拟引擎完善 + 全局测试覆盖 + `.env` 配置 |

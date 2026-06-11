@@ -1,5 +1,160 @@
 # C Learn — 开发日志
 
+## 2026-06-11 — v4.0 全局 Debug + 优化 + UI 修复 + 内容极大扩展 + 打包
+
+### 课程内容极大扩展 (v4.0 核心)
+- **36 个课程模块全部重写**，从原来的 90KB 扩展到 **1.4MB（~15×）**
+- 每个模块 10-29KB，面向**零基础初学者**
+- 每个文件结构统一：
+  - 🌟 生活化比喻引入（储物柜、厨房家电、快递地址等）
+  - 📖 概念详解（是什么、为什么、何时用）
+  - 📊 ASCII 图解（内存布局、编译流程、缓冲区、递归树）
+  - 💻 4-6 个逐行注释的代码示例（简单→复杂）
+  - ⚠️ 3-5 个常见错误（错误 vs 正确代码对比表格）
+  - 💡 分层练习建议（初级/中级/进阶）
+  - 📝 要点速查清单 + 小测验
+  - 🔗 相关主题链接
+- 9 个后台 Agent 并行写作，覆盖全部 16 个级别
+
+### 后端 Bug 修复 (6 个) ...
+
+### 本次总修复: 11 bugs + 7 优化 + 打包
+
+### 后端 Bug 修复 (6 个)
+- **P0**: `simulator.py` `step_back()` 不恢复变量值 — 新增 `_restore_stack()` + `_stack_data` 序列化
+- **P0**: `simulator.py` `_eval_func_call` else 分支在 if 为真时仍执行 — 新增 `_eval_skip_else` 标志
+- **P1**: `simulator.py` `_eval_expr` 不支持一元负号 (`-a`) — 添加 unary minus 处理
+- **P2**: `server.py` 类型标注 `_simulator: CSimulator = None` → `Optional[CSimulator]`
+- **P3**: `simulator.py` `_handle_func_call` 内冗余 import — 删除
+- **P1**: 5 道习题 ID 重复 (basic-02/03, loop-01, ptr-01/02) — 改为唯一 ID
+
+### 前端 Bug 修复 (5 个)
+- **P1**: `app.js` 编译器错误行号越界 → `lines[ln-1]` undefined 崩溃 — 添加边界检查
+- **P2**: `app.js` `r._example` 死代码 — 改用 `_vizSource` 变量追踪
+- **P2**: `app.js` 重复点击已激活模式按钮触发完整 UI 重建 — 添加早返
+- **P3**: `app.js` Toast 堆叠 — 新 toast 前移除旧 toast
+- **P3**: `index.html` 图标按钮缺少 `aria-label` — 添加无障碍标注
+
+### 优化 (7 项)
+- 内存: 历史快照排除 `lines/variables` (5000步省 ~13MB)
+- I/O: `InteractiveRunner._reader` 1字节→256字节块读 (系统调用减 256×)
+- 前端: `formatCode()` 处理 else/else-if 行
+- 前端: `debouncedHighlight` 合并自动保存逻辑
+- 文档: `ANALYSIS.md` 更新为当前 Web 架构
+- 打包: spec 添加 dotenv hidden import
+- 数据: 习题 ID 去重
+
+### 打包
+- `pyinstaller C-Learn.spec --clean --noconfirm` → `dist/C-Learn.exe` (22MB)
+- TCC 编译器 + Flask + PyWebView + 全部内容一次性打包
+
+### 测试
+- **61 tests, 100% pass, 2.6s** (无回归)
+
+### 评估
+- 架构: B+/A- | 安全: A- | 代码质量: B+ | 测试: A | 性能: B+
+- 144 习题 + 36 课程模块 | 20 个 API 端点 | 9 个可视化示例
+
+### 核心文件变更
+- `simulator.py`: +45 行 (step_back 恢复/_stack_data/_restore_stack/else skip/unary minus)
+- `server.py`: +2 行 (Optional 类型)
+- `services.py`: ~5 行 (块读取优化)
+- `web/app.js`: +20 行 (边界检查/_vizSource/早返/toast/formatCode)
+- `web/index.html`: +3 行 (aria-label)
+- `ANALYSIS.md`: 完全重写 (反映 Web 架构)
+- `C-Learn.spec`: +1 行 (dotenv hidden import)
+- 5 个 YAML 习题文件: ID 去重
+- `devlog.md`: 更新
+
+---
+
+## 2026-06-09 — v3.3.0 模拟引擎补全 + 8 项功能优化
+
+### 模拟引擎 v3 (do-while + break/continue + switch/case)
+- **do-while**: 先执行循环体，`} while (cond);` 检查条件后跳回
+- **break**: 跳出最内层循环或 switch 块
+- **continue**: 跳过当前迭代剩余部分，跳回条件检查
+- **switch/case**: 表达式求值 + case 匹配 + fall-through 穿透 + break 退出
+- **default**: 无匹配 case 时进入默认分支
+- 新增 3 个示例: 例7-do-while、例8-break/continue、例9-switch/case
+
+### 代码美化 (Ctrl+S)
+- `formatCode()`: 自动缩进对齐、大括号智能缩进、case 标签处理
+
+### 代码自动补全 (输入 2+ 字符触发)
+- 12 种 C 语言模板: printf, scanf, for, while, if, if-else, switch, do-while, main, include, struct, malloc
+- Tab 选择补全项，方向键导航，Esc 关闭
+
+### 快捷键面板 (Ctrl+K)
+- 8 个常用快捷键速查表，覆盖所有操作
+
+### 成就系统
+- 9 种成就: 初次运行、首战告捷、小试牛刀(10题)、渐入佳境(50题)、百题斩(100题)、挑战者(5困难)、连续三天、一周坚持、基础毕业
+- 解锁时 toast 通知 + 欢迎页徽章展示
+
+### 每日一题
+- 基于日期哈希的每日推荐题目，欢迎页顶部卡片展示
+
+### 进度导出/导入
+- 导出: 下载 progress JSON 文件
+- 导入: 上传 JSON 恢复进度
+
+### 测试
+- **61 tests, 100% pass** (新增 5 个: TestSimulator +5)
+- test_static_js_file 覆盖新函数断言
+
+### 核心文件变更
+- `simulator.py`: +200 行 (do-while/break/continue/switch + 3 示例)
+- `web/app.js`: +200 行 (格式化/补全/快捷面板/成就/每日一题/导出导入)
+- `web/style.css`: +60 行 (新组件样式)
+- `web/index.html`: +25 行 (新按钮 + 面板 + 下拉)
+- `test_all.py`: +50 行 (switch/break/continue/do-while 测试)
+- `README.md`, `devlog.md`: 更新
+
+---
+
+## 2026-06-09 — v3.2.0 全面评估修正
+
+### 模拟引擎升级 (if/else + while + for)
+- **控制流支持**: `simulator.py` 新增 if/else 条件分支、while 循环、for 循环
+- **大括号配对**: 解析时建立 `_brace_map`，支持 `{` 与同行语法元素
+- **条件求值**: `_eval_condition()` 支持 `>`, `<`, `>=`, `<=`, `==`, `!=`
+- **循环追踪**: `_loop_stack` 管理嵌套循环，正确跳回条件检查
+- 新增 3 个示例: 例4-if/else、例5-while、例6-for
+
+### 安全扫描增强
+- 正则词边界保护: `systematic` 不再误触发 `system(` 拦截
+- 新增拦截: `syscall()`, `__builtin_*`, `winsock2`
+- 严格模式支持: `CLEARN_STRICT_FREE_PLAY=1` 环境变量
+
+### 配置系统
+- **`.env.example`**: 8 项可配置设置（端口、超时、输出限制、路径）
+- `CONFIG` 字典统一管理所有配置，可选 `python-dotenv` 支持
+- 错误提示新增英文 fallback（`CLEARN_LANG` / `LANG` 检测）
+
+### Bug 修复
+- **临时文件泄漏**: `compile_only()` 重构为 try/finally 模式，失败路径自动清理
+- **指针算术 bug**: `_handle_assign` 中 `return` 缩进错误导致普通变量赋值被跳过
+- **for 循环死循环**: `_loop_stack` 弹出时机修正，条件为假时才弹出
+- **静态 HTML 测试**: 适配 `?v=11` 版本参数
+
+### 前端优化
+- 语法高亮添加 50ms 防抖，大文件粘贴不卡顿
+- 可视化面板新增 3 个控制流示例按钮
+
+### 测试
+- **56 tests, 100% pass** (新增 16 个: TestSimulator +7, TestSecurityRegex +5, TestConfig +1, TestVizExamplesAPI +3)
+
+### 核心文件变更
+- `simulator.py`: +350 行 (控制流引擎)
+- `services.py`: +80 行 (配置 + 安全 + 英文错误提示 + 修复)
+- `test_all.py`: +120 行 (新测试组)
+- `web/app.js`: +20 行 (防抖 + 新示例)
+- `web/index.html`: +3 行 (新示例按钮)
+- `.env.example`: 新建
+
+---
+
 ## 2026-06-09 — v3.1.0 历史/判题修复 + 菜单方向修正
 
 ### Bug 修复

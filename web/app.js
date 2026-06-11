@@ -104,10 +104,32 @@ function syncEditorScroll(){
   pre.scrollLeft=codeInput.scrollLeft;
 }
 
+// Debounced highlight for performance on large files
+let _hlTimer=null;
+function debouncedHighlight(){
+  updateGutter();
+  if(_hlTimer)clearTimeout(_hlTimer);
+  _hlTimer=setTimeout(()=>highlight(),50);
+}
 codeInput.addEventListener('scroll',syncEditorScroll);
-codeInput.addEventListener('input',()=>{updateGutter();highlight()});
+codeInput.addEventListener('input',debouncedHighlight);
 codeInput.addEventListener('keydown',e=>{
-  if(e.key==='Tab'){e.preventDefault();const s=codeInput.selectionStart;codeInput.value=codeInput.value.slice(0,s)+'    '+codeInput.value.slice(s);codeInput.selectionStart=codeInput.selectionEnd=s+4;highlight();updateGutter()}
+  // Autocomplete: Tab/Arrow keys navigate the dropdown
+  if(acVisible){
+    if(e.key==='Tab'||e.key==='Enter'){
+      e.preventDefault();
+      const cur=$("#ac-drop .ac-item.cur");
+      if(cur)cur.click();
+      return;
+    }
+    if(e.key==='ArrowDown'){e.preventDefault();acIdx=Math.min(acIdx+1,$$("#ac-drop .ac-item").length-1);$$("#ac-drop .ac-item").forEach((el,i)=>el.classList.toggle('cur',i===acIdx));return}
+    if(e.key==='ArrowUp'){e.preventDefault();acIdx=Math.max(0,acIdx-1);$$("#ac-drop .ac-item").forEach((el,i)=>el.classList.toggle('cur',i===acIdx));return}
+    if(e.key==='Escape'){e.preventDefault();$("#ac-drop").classList.remove('on');acVisible=false;return}
+    // Any other key: dismiss autocomplete and let it type
+    $("#ac-drop").classList.remove('on');acVisible=false;
+  }
+  // Tab: insert 4 spaces (only when autocomplete is NOT visible)
+  if(e.key==='Tab'){e.preventDefault();const s=codeInput.selectionStart;codeInput.value=codeInput.value.slice(0,s)+'    '+codeInput.value.slice(s);codeInput.selectionStart=codeInput.selectionEnd=s+4;debouncedHighlight()}
 });
 updateGutter();highlight();
 
@@ -218,7 +240,7 @@ document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="b"){
 
 // ═══════════════════ UI HELPERS ═══════════════════
 function dot(cls,txt){const d=$("#run-dot");d.textContent=txt;d.className=cls+' on';setTimeout(()=>d.classList.remove('on'),3500)}
-function toast(msg,cls="ok"){const t=document.createElement("div");t.className="toast "+cls;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity="0";setTimeout(()=>t.remove(),300)},3000)}
+function toast(msg,cls="ok"){const old=document.querySelector('.toast');if(old){old.style.opacity="0";setTimeout(()=>old.remove(),300)};const t=document.createElement("div");t.className="toast "+cls;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity="0";setTimeout(()=>t.remove(),300)},3000)}
 function setBtnLoading(btn,loading){if(loading){btn.classList.add('loading');btn.disabled=true}else{btn.classList.remove('loading');btn.disabled=false}}
 // Terminal helpers — unified output+input textarea
 function out(h){const ta=$("#term-out");ta.value=h;ta.scrollTop=ta.scrollHeight;_inputStart=ta.value.length}
@@ -228,26 +250,38 @@ function showTerm(){ $("#term-out").style.display='';$("#judge-body").style.disp
 function clr(){showTerm();out('')}
 function esc(s){return(s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
-// ═══════════════════ CODE HISTORY ═══════════════════
+// ═══════════════════ CODE HISTORY (per-exercise) ═══════════════════
 const MAX_HISTORY=10;
+function _historyKey(){
+  if(curEx)return 'c-code-hist-'+curEx.id;
+  if(mode==='free')return 'c-code-hist-free';
+  if(curMod)return 'c-code-hist-mod-'+curMod.slug;
+  return 'c-code-hist-general';
+}
 function saveCodeHistory(code){
-  if(!code.trim()||code===DEFAULT_CODE)return;
+  if(!code.trim())return;
   try{
-    let hist=JSON.parse(localStorage.getItem('c-code-hist')||'[]');
+    const key=_historyKey();
+    let hist=JSON.parse(localStorage.getItem(key)||'[]');
+    // Don't save duplicate consecutive entries
     if(hist.length>0&&hist[0].code===code)return;
     hist.unshift({code:code.slice(0,2000),time:Date.now()});
     if(hist.length>MAX_HISTORY)hist=hist.slice(0,MAX_HISTORY);
-    localStorage.setItem('c-code-hist',JSON.stringify(hist));
+    localStorage.setItem(key,JSON.stringify(hist));
   }catch(e){}
 }
-function loadCodeHistory(){
-  try{return JSON.parse(localStorage.getItem('c-code-hist')||'[]')}catch(e){return[]}
+function loadCodeHistory(key){
+  try{return JSON.parse(localStorage.getItem(key||_historyKey())||'[]')}catch(e){return[]}
 }
 function fmtTime(ts){const d=Math.floor((Date.now()-ts)/6e4);if(d<1)return'刚刚';if(d<60)return d+'分钟前';if(d<1440)return Math.floor(d/60)+'小时前';return Math.floor(d/1440)+'天前'}
 function showHistoryMenu(){
   const menu=$("#history-menu"),hist=loadCodeHistory();
-  if(!hist.length){menu.innerHTML='<div class="h-empty">暂无历史记录</div>'}
-  else{menu.innerHTML=hist.map((h,i)=>'<div class="h-item" data-i="'+i+'"><span class="h-code">'+esc(h.code.slice(0,100))+'</span><span class="h-time">'+fmtTime(h.time)+'</span></div>').join('')}
+  const label=curEx?curEx.title:(mode==='free'?'自由写':(curMod?curMod.title:'通用'));
+  if(!hist.length){menu.innerHTML='<div class="h-empty">'+label+' — 暂无历史</div>'}
+  else{
+    menu.innerHTML='<div class="h-label">📋 '+label+' ('+hist.length+'条)</div>'+
+      hist.map((h,i)=>'<div class="h-item" data-i="'+i+'"><span class="h-code">'+esc(h.code.slice(0,100))+'</span><span class="h-time">'+fmtTime(h.time)+'</span></div>').join('');
+  }
   menu.classList.add('on');
   $$("#history-menu .h-item").forEach(el=>el.onclick=()=>{const i=parseInt(el.dataset.i);setCode(hist[i].code);menu.classList.remove('on');toast('代码已恢复')});
 }
@@ -347,6 +381,18 @@ function buildExerciseList(filter="all"){
 }
 
 // ═══════════════════ NAVIGATION ═══════════════════
+function openExerciseById(exId){
+  const ex=exercises.find(e=>e.id===exId);
+  if(ex){
+    // Switch to practice mode
+    mode='practice';
+    $$("#topbar .modes button").forEach(x=>x.classList.remove('on'));
+    document.querySelector('#topbar .modes button[data-mode="practice"]').classList.add('on');
+    hideVizPanel();
+    $("#btn-submit").style.display="";$("#btn-reset").style.display="";
+    openExercise(ex);
+  }
+}
 function getAdjacent(){
   const flat=[],groups={};for(const m of modules)(groups[m.level]||=[]).push(m);
   for(const lv of Object.keys(groups).sort((a,b)=>a-b))for(const m of groups[lv].sort((a,b)=>a.order-b.order))flat.push(m);
@@ -370,18 +416,37 @@ function showWelcome(){
     mpRows+='<div class="mp-row"><span class="mp-name">'+(LV[lv]||"Lv"+lv)+'</span><div class="mp-bar"><div class="mp-fill '+(p===100?'done':'prog')+'" style="width:'+p+'%"></div></div><span class="mp-n">'+d+'/'+mods.length+'</span></div>';
   }
 
+  // Daily problem
+  const daily=getDailyProblem();
+  let dailyHTML='';
+  if(daily){
+    const diffLabel=daily.difficulty==='easy'?'简单':daily.difficulty==='medium'?'中等':'困难';
+    dailyHTML='<div class="daily-card" onclick="openExerciseById(\''+daily.id+'\')"><div class="daily-badge">📅 每日一题</div><div><b>'+daily.title+'</b></div><div style="font-size:var(--fs-xs);color:var(--text3)">难度: '+diffLabel+' · '+daily.tags.slice(0,3).join(', ')+'</div></div>';
+  }
+
+  // Achievement showcase
+  const unlocked=JSON.parse(localStorage.getItem('c-ach')||'[]');
+  let achHTML='';
+  if(unlocked.length>0){
+    const recent=ACHIEVEMENTS.filter(a=>unlocked.includes(a.id)).slice(-4);
+    achHTML='<div class="ach-row">'+recent.map(a=>'<div class="ach-badge" title="'+a.desc+'">'+a.icon+'</div>').join('')+'</div>';
+  }
+
   $("#center").innerHTML=
     '<div class="welcome"><div class="emoji">🎓</div><h1>欢迎学习 C 语言！</h1><div class="sub">即学即写 · 学写结合</div>'+
+    dailyHTML+
     '<div class="stat-row">'+
     '<div class="stat-card"><div class="val">'+doneEx+'</div><div class="lbl">已完成练习</div></div>'+
     '<div class="stat-card"><div class="val">'+pct+'%</div><div class="lbl">总体进度</div></div>'+
     '<div class="stat-card"><div class="val">'+exercises.filter(e=>e.difficulty==="hard"&&e.status==="passed").length+'</div><div class="lbl">困难题已过</div></div>'+
     '</div>'+
+    achHTML+
     '<div class="module-progress"><h3>📊 模块进度</h3>'+mpRows+'</div>'+
     '<div class="step"><span class="n">1</span>左侧选择课程，阅读讲解</div>'+
     '<div class="step"><span class="n">2</span>右侧编辑器编写代码</div>'+
     '<div class="step"><span class="n">3</span>点击 <b>▶ 运行</b> 查看结果</div>'+
     '<div class="step"><span class="n">4</span>切换到 <b>练习</b> 或 <b>可视化</b> 模式</div>'+
+    '<div style="display:flex;gap:10px;justify-content:center;margin-top:10px"><button class="btn-g" onclick="exportProgress()">📤 导出进度</button><button class="btn-g" onclick="importProgress()">📥 导入进度</button></div>'+
     (nl?'<button class="start-btn" id="start-btn">开始学习：'+nl.title+'</button>':'');
   $("#center").scrollTop=0;
   if(nl)$("#start-btn").onclick=()=>openModule(nl);
@@ -537,6 +602,7 @@ $("#btn-run").onclick=async()=>{
     dot('no','编译失败');
     $$(".erlink").forEach(el=>el.onclick=()=>{
       const ln=parseInt(el.dataset.line),lines=codeInput.value.split('\n');
+      if(ln<1||ln>lines.length)return;  // bounds check (v4 fix)
       let pos=0;for(let i=0;i<ln-1;i++)pos+=lines[i].length+1;
       codeInput.focus();codeInput.setSelectionRange(pos,pos+lines[ln-1].length);
     });
@@ -570,7 +636,11 @@ $("#btn-run").onclick=async()=>{
 
       if(res.exit_code===0){
         dot('ok','运行成功');const v=inspectVars(code);if(v.length)showVarPanel(v);
-        if(!curEx)toast("运行成功！");
+        if(!curEx){
+          toast("运行成功！");
+          if(!localStorage.getItem('c-ach-first_run')){localStorage.setItem('c-ach-first_run','1');setTimeout(checkAchievements,500)}
+        }
+        recordDailyActivity();
       }else{
         outAppend('\n[退出码 '+res.exit_code+']\n');
         dot('no','退出码 '+res.exit_code);
@@ -591,6 +661,8 @@ $("#btn-submit").onclick=async()=>{
     if(r.status==="accepted"){
       h+='<div class="ok-big">🎉 完全正确！</div><div style="text-align:center;color:var(--text3);margin-bottom:8px">'+r.total_count+'/'+r.total_count+' 测试通过 · '+r.wall_time_ms+'ms</div>';
       dot('ok','全部通过');toast("全部通过！");
+      if(!localStorage.getItem('c-ach-first_ac')){localStorage.setItem('c-ach-first_ac','1');setTimeout(checkAchievements,500)}
+      recordDailyActivity();
     }else if(r.status==="compile_error"){
       h+='<div class="no-big">编译错误</div><div style="text-align:center;color:var(--red)">'+esc(r.compile_error||"")+'</div>';
       dot('no','编译失败');toast("编译没通过","warn");
@@ -631,6 +703,9 @@ const EXAMPLES_CODE={
   pointer_basics:'#include <stdio.h>\n\nint main() {\n    int a = 5;\n    int b = 10;\n    int *p = &a;\n\n    printf("a = %d\\n", a);\n    *p = 20;\n    printf("a = %d\\n", a);\n\n    p = &b;\n    printf("*p = %d\\n", *p);\n    return 0;\n}',
   function_pointer:'#include <stdio.h>\n\nvoid swap(int *x, int *y) {\n    int temp = *x;\n    *x = *y;\n    *y = temp;\n}\n\nint main() {\n    int a = 5;\n    int b = 10;\n\n    printf("before: a=%d b=%d\\n", a, b);\n    swap(&a, &b);\n    printf("after:  a=%d b=%d\\n", a, b);\n    return 0;\n}',
   array_pointer:'#include <stdio.h>\n\nint main() {\n    int arr[3] = {10, 20, 30};\n    int *p = arr;\n\n    printf("arr[0] = %d\\n", arr[0]);\n    printf("*p = %d\\n", *p);\n\n    p = p + 1;\n    printf("*p = %d\\n", *p);\n\n    *p = 99;\n    printf("arr[1] = %d\\n", arr[1]);\n    return 0;\n}',
+  if_else:'#include <stdio.h>\n\nint main() {\n    int a = 5;\n\n    if (a > 3) {\n        printf("a > 3\\n");\n    } else {\n        printf("a <= 3\\n");\n    }\n\n    a = 2;\n    if (a > 3) {\n        printf("big\\n");\n    } else {\n        printf("small\\n");\n    }\n    return 0;\n}',
+  while_loop:'#include <stdio.h>\n\nint main() {\n    int i = 0;\n\n    while (i < 3) {\n        printf("i = %d\\n", i);\n        i = i + 1;\n    }\n    return 0;\n}',
+  for_loop:'#include <stdio.h>\n\nint main() {\n    int sum = 0;\n\n    for (int i = 1; i <= 3; i = i + 1) {\n        sum = sum + i;\n    }\n    printf("sum = %d\\n", sum);\n    return 0;\n}',
 };
 
 function showVizPanel(){
@@ -648,6 +723,7 @@ function hideVizPanel(){
 async function vizLoadCode(code){
   const r=await api("/api/sim/load",{method:"POST",body:JSON.stringify({code})});
   if(r.error){toast(r.error,"err");return}
+  _vizSource=code;  // track source for line display (v4 fix)
   vizRefresh(r);
 }
 async function vizStep(){const r=await api("/api/sim/step",{method:"POST"});vizRefresh(r)}
@@ -655,9 +731,12 @@ async function vizBack(){const r=await api("/api/sim/back",{method:"POST"});vizR
 async function vizReset(){const r=await api("/api/sim/reset",{method:"POST"});vizRefresh(r)}
 async function vizRunAll(){const r=await api("/api/sim/run",{method:"POST"});vizRefresh(r)}
 
+// Track the original source code loaded in the viz panel
+let _vizSource='';
+
 function vizRefresh(r){
   if(!r||r.error)return;
-  const lines=(EXAMPLES_CODE[r._example]||$("#viz-code").textContent||"").split('\n');
+  const lines=(_vizSource||$("#viz-code").textContent||"").split('\n');
   $("#viz-gutter").innerHTML=lines.map((_,i)=>'<span'+(i+1===r.current_line?' class="hl"':'')+'>'+(i+1)+'</span>').join('\n');
   $("#viz-code").innerHTML=lines.map((l,i)=>'<span'+(i+1===r.current_line?' class="hl"':'')+'>'+esc(l)+'</span>').join('\n');
 
@@ -682,17 +761,77 @@ $("#viz-next").onclick=vizStep;$("#viz-prev").onclick=vizBack;$("#viz-reset").on
 $("#viz-ex1").onclick=()=>{const c=EXAMPLES_CODE.pointer_basics;$("#viz-code").textContent=c;vizLoadCode(c)};
 $("#viz-ex2").onclick=()=>{const c=EXAMPLES_CODE.function_pointer;$("#viz-code").textContent=c;vizLoadCode(c)};
 $("#viz-ex3").onclick=()=>{const c=EXAMPLES_CODE.array_pointer;$("#viz-code").textContent=c;vizLoadCode(c)};
+$("#viz-ex4").onclick=()=>{const c=EXAMPLES_CODE.if_else;$("#viz-code").textContent=c;vizLoadCode(c)};
+$("#viz-ex5").onclick=()=>{const c=EXAMPLES_CODE.while_loop;$("#viz-code").textContent=c;vizLoadCode(c)};
+$("#viz-ex6").onclick=()=>{const c=EXAMPLES_CODE.for_loop;$("#viz-code").textContent=c;vizLoadCode(c)};
 $("#viz-custom").onclick=()=>{const c=getCode();if(!c.trim()){toast("请先在编辑器中编写代码","warn");return}$("#viz-code").textContent=c;vizLoadCode(c);toast("已加载编辑器中的代码")};
+
+// ═══════════════════ FREE WRITE MODE ═══════════════════
+function showFreeMode(){
+  curMod=null;curEx=null;
+  // Clear sidebar for free mode
+  $("#side-title").textContent="自由写";
+  $("#side-num").textContent="随心写";
+  const ctr=$("#side-inner");ctr.innerHTML="";
+  const card=document.createElement("div");card.className="chapter";
+  card.innerHTML='<div style="padding:12px 14px;color:var(--text2);font-size:var(--fs-sm);line-height:1.8"><b>📝 自由编写</b><br>不受课程和习题限制<br><br><span style="color:var(--text3);font-size:var(--fs-xs)">💾 代码自动保存<br>🕐 独立历史记录<br>▶️ Ctrl+Enter 运行</span></div>';
+  ctr.appendChild(card);
+
+  // Restore saved free code
+  const saved=localStorage.getItem('c-free-code');
+  setCode(saved||DEFAULT_CODE);
+  clr();dot('','');
+  $("#btn-submit").style.display="none";$("#btn-reset").style.display="none";
+  $$("#output-pane .otab").forEach(b=>{if(b.dataset.tab==="judge")b.style.display="none"});
+  showTerm();
+
+  const freeHistCount=loadCodeHistory('c-code-hist-free').length;
+  $("#center").innerHTML=
+    '<div class="welcome"><div class="emoji">📝</div><h1>自由编写</h1><div class="sub">随心写 C 代码 · 自动保存 · 不受限制</div>'+
+    '<div class="stat-row">'+
+    '<div class="stat-card" id="free-save-card"><div class="val" id="free-save-status">已保存</div><div class="lbl">每次运行自动保存到本地</div></div>'+
+    '<div class="stat-card"><div class="val">'+freeHistCount+'</div><div class="lbl">历史记录</div></div>'+
+    '</div>'+
+    '<div class="step"><span class="n">💡</span>在这里可以自由编写任何 C 代码，不受课程和习题限制</div>'+
+    '<div class="step"><span class="n">💾</span>代码自动保存到本地，刷新或重启不丢失</div>'+
+    '<div class="step"><span class="n">🕐</span>每次运行自动记录到独立历史</div>'+
+    '<div class="step"><span class="n">⌨️</span>输入 2 个字母触发代码补全，Tab 选择</div>'+
+    '</div>';
+  $("#center").scrollTop=0;
+}
+
+// Auto-save free code — merged with debounced highlight to avoid conflicts
+let _freeSavePending=false;
+const _origDebouncedHighlight=debouncedHighlight;
+debouncedHighlight=function(){
+  updateGutter();
+  if(_hlTimer)clearTimeout(_hlTimer);
+  _hlTimer=setTimeout(()=>{
+    highlight();
+    // Also auto-save if in free mode
+    if(mode==='free'&&!_freeSavePending){
+      _freeSavePending=true;
+      setTimeout(()=>{
+        localStorage.setItem('c-free-code',getCode());
+        _freeSavePending=false;
+        const el=$("#free-save-status");if(el)el.textContent='已保存 ✓';
+      },1000);
+    }
+  },50);
+};
 
 // ═══════════════════ MODE SWITCH ═══════════════════
 $$("#topbar .modes button").forEach(b=>b.onclick=()=>{
+  if(b.classList.contains("on"))return;  // already active (v4 fix)
   $$("#topbar .modes button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on");mode=b.dataset.mode;curMod=null;curEx=null;
-  if(mode==="visualize"){$("#viz-code").textContent=EXAMPLES_CODE.pointer_basics;showVizPanel();vizLoadCode(EXAMPLES_CODE.pointer_basics);return}
+  b.classList.add("on");mode=b.dataset.mode;
+  if(mode==="visualize"){curMod=null;curEx=null;$("#viz-code").textContent=EXAMPLES_CODE.pointer_basics;showVizPanel();vizLoadCode(EXAMPLES_CODE.pointer_basics);return}
   hideVizPanel();clr();dot('','');
-  $("#btn-submit").style.display=mode==="practice"?"":"none";
-  $("#btn-reset").style.display=mode==="practice"?"":"none";
-  if(mode==="learn"){buildCourseTree();showWelcome()}else{buildExerciseList();showWelcome()}
+  $("#btn-submit").style.display=(mode==="practice")?"":"none";
+  $("#btn-reset").style.display=(mode==="practice")?"":"none";
+  if(mode==="free"){showFreeMode();return}
+  if(mode==="learn"){curMod=null;curEx=null;buildCourseTree();showWelcome()}
+  else{curMod=null;curEx=null;buildExerciseList();showWelcome()}
 });
 
 // ═══════════════════ ONBOARDING ═══════════════════
@@ -750,6 +889,267 @@ const ac=localStorage.getItem('c-ac');if(ac)setAccent(ac);
 initSystemTheme();
 if(localStorage.getItem('c-lt')==='1')applyLightMode(true);
 
+// ═══════════════════ CODE FORMATTER ═══════════════════
+function formatCode(code){
+  const lines=code.split('\n');
+  let out=[],indent=0;
+  for(let line of lines){
+    let trimmed=line.trim();
+    if(!trimmed){out.push('');continue}
+    // Handle 'else' / 'else if' — outdent before output (v4 fix)
+    if(/^else\b/.test(trimmed)&&!trimmed.endsWith('{')){
+      indent=Math.max(0,indent-1);
+    }
+    // Decrease indent for closing braces
+    if(trimmed.startsWith('}')||trimmed.startsWith(']')){
+      indent=Math.max(0,indent-1);
+    }
+    out.push('    '.repeat(indent)+trimmed);
+    // Increase indent after opening braces
+    if(trimmed.endsWith('{')||trimmed.endsWith('[')||trimmed.endsWith('(')){
+      indent++;
+    }
+    // Handle 'else {' — outdent before, indent after (v4 fix)
+    if(/^else\s*\{/.test(trimmed)){
+      indent=Math.max(0,indent-1);
+      out[out.length-1]='    '.repeat(indent)+trimmed;
+      indent++;
+    }
+    // Decrease for case/default labels
+    if(/^(case\s+|default\s*:)/.test(trimmed)){
+      indent=Math.max(0,indent-1);
+      out[out.length-1]='    '.repeat(indent)+trimmed;
+      indent++;
+    }
+  }
+  return out.join('\n');
+}
+$("#btn-fmt").onclick=()=>{
+  const code=getCode();if(!code.trim())return;
+  const formatted=formatCode(code);
+  setCode(formatted);toast("代码已格式化");
+};
+
+// ═══════════════════ SHORTCUT PANEL ═══════════════════
+function toggleShortcuts(){
+  const ov=$("#shortcut-overlay");
+  ov.classList.toggle('on');
+}
+$("#shortcut-close").onclick=toggleShortcuts;
+$("#shortcut-overlay").addEventListener('click',function(e){
+  if(e.target===this)toggleShortcuts();
+});
+
+// ═══════════════════ AUTOCOMPLETE ═══════════════════
+const AC_PATTERNS=[
+  {key:'pr',text:'printf("");',desc:'printf 输出',sel:[8,8]},
+  {key:'sc',text:'scanf("%d", &x);',desc:'scanf 输入',sel:[7,10]},
+  {key:'for',text:'for (int i = 0; i < N; i++) {\n    \n}',desc:'for 循环',sel:[26,26]},
+  {key:'while',text:'while (1) {\n    \n}',desc:'while 循环',sel:[9,10]},
+  {key:'if',text:'if (1) {\n    \n}',desc:'if 条件',sel:[6,7]},
+  {key:'ife',text:'if (1) {\n    \n} else {\n    \n}',desc:'if-else',sel:[6,7]},
+  {key:'switch',text:'switch (x) {\n    case 1:\n        \n        break;\n    default:\n        \n}',desc:'switch',sel:[34,34]},
+  {key:'do',text:'do {\n    \n} while (1);',desc:'do-while',sel:[6,6]},
+  {key:'main',text:'int main() {\n    \n    return 0;\n}',desc:'main 函数',sel:[16,16]},
+  {key:'inc',text:'#include <stdio.h>\n',desc:'include',sel:[0,19]},
+  {key:'struct',text:'struct name {\n    int field;\n};',desc:'结构体',sel:[13,17]},
+  {key:'malloc',text:'(int*)malloc(N * sizeof(int));',desc:'malloc',sel:[0,33]},
+];
+let acVisible=false,acIdx=0;
+
+function showAutocomplete(word){
+  const matches=AC_PATTERNS.filter(p=>p.key.startsWith(word.toLowerCase()));
+  if(!matches.length){$("#ac-drop").classList.remove('on');acVisible=false;return}
+  acIdx=0;
+  const h=matches.map((m,i)=>'<div class="ac-item'+(i===0?' cur':'')+'" data-i="'+i+'"><b>'+esc(m.key)+'</b><span>'+esc(m.desc)+'</span><small>'+esc(m.text.slice(0,50))+'</small></div>').join('');
+  $("#ac-drop").innerHTML=h;
+  $("#ac-drop").classList.add('on');acVisible=true;
+  // Position BELOW the cursor line, anchored to editor
+  const ta=codeInput,rect=ta.getBoundingClientRect();
+  const lineHeight=parseFloat(getComputedStyle(ta).lineHeight)||20;
+  const cursorTop=ta.selectionStart?ta.value.slice(0,ta.selectionStart).split('\n').length:1;
+  const top=rect.top+(cursorTop-1)*lineHeight+lineHeight+4;
+  $("#ac-drop").style.top=Math.min(top,window.innerHeight-220)+'px';
+  $("#ac-drop").style.left=Math.min(rect.left+20,window.innerWidth-380)+'px';
+  // Click handlers
+  $$("#ac-drop .ac-item").forEach(el=>el.onclick=()=>{
+    const i=parseInt(el.dataset.i);applyAutocomplete(matches[i]);
+  });
+}
+
+function applyAutocomplete(pat){
+  const ta=codeInput,pos=ta.selectionStart;
+  let start=pos;
+  while(start>0&&/[a-zA-Z_]/.test(ta.value[start-1]))start--;
+  const before=ta.value.slice(0,start);
+  const after=ta.value.slice(pos);
+  ta.value=before+pat.text+after;
+  ta.focus();
+  // Position cursor inside the inserted template
+  const cursorPos=start+pat.sel[0];
+  ta.selectionStart=ta.selectionEnd=cursorPos;
+  // If the template has a different start/end for selection, use that
+  if(pat.sel.length===2&&pat.sel[0]!==pat.sel[1]){
+    ta.selectionStart=start+pat.sel[0];
+    ta.selectionEnd=start+pat.sel[1];
+  }
+  $("#ac-drop").classList.remove('on');acVisible=false;
+  debouncedHighlight();
+}
+
+// Trigger autocomplete on input (merged with highlight listener)
+codeInput.addEventListener('input',function(){
+  if(acVisible)return;
+  const pos=codeInput.selectionStart;
+  // Only trigger on letter/underscore input
+  const char=codeInput.value[pos-1]||'';
+  if(!/[a-zA-Z_]/.test(char)){$("#ac-drop").classList.remove('on');acVisible=false;return}
+  let start=pos;
+  while(start>0&&/[a-zA-Z_]/.test(codeInput.value[start-1]))start--;
+  const word=codeInput.value.slice(start,pos);
+  if(word.length>=2)showAutocomplete(word);
+  else{$("#ac-drop").classList.remove('on');acVisible=false}
+});
+
+// ═══════════════════ PROGRESS EXPORT/IMPORT ═══════════════════
+window.exportProgress=async function(){
+  try{
+    const r=await api('/api/progress');
+    const blob=new Blob([JSON.stringify(r,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='c-learn-progress-'+new Date().toISOString().slice(0,10)+'.json';
+    a.click();URL.revokeObjectURL(url);toast("进度已导出");
+  }catch(e){toast("导出失败","err")}
+};
+
+window.importProgress=function(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.json';
+  inp.onchange=async function(){
+    try{
+      const text=await inp.files[0].text();
+      const data=JSON.parse(text);
+      if(!data.details){toast("无效的进度文件","err");return}
+      // Upload each progress entry
+      let cnt=0;
+      for(const[k,v]of Object.entries(data.details)){
+        await api('/api/progress/module/'+k,{method:'POST',body:JSON.stringify({status:v.status,code:v.last_code||''})});
+        cnt++;
+      }
+      await loadData();buildCourseTree();showWelcome();
+      toast("已导入 "+cnt+" 条进度记录");
+    }catch(e){toast("导入失败: "+e.message,"err")}
+  };
+  inp.click();
+};
+
+// ═══════════════════ ACHIEVEMENT SYSTEM ═══════════════════
+const ACHIEVEMENTS=[
+  {id:'first_run',name:'初次运行',desc:'第一次成功运行 C 代码',icon:'▶️',check:p=>p.firstRun},
+  {id:'first_ac',name:'首战告捷',desc:'第一次提交通过判题',icon:'✅',check:p=>p.firstAC},
+  {id:'solve_10',name:'小试牛刀',desc:'通过 10 道练习题',icon:'🔟',check:p=>(p.solved||0)>=10},
+  {id:'solve_50',name:'渐入佳境',desc:'通过 50 道练习题',icon:'🔥',check:p=>(p.solved||0)>=50},
+  {id:'solve_100',name:'百题斩',desc:'通过 100 道练习题',icon:'💯',check:p=>(p.solved||0)>=100},
+  {id:'hard_5',name:'挑战者',desc:'通过 5 道困难题',icon:'💪',check:p=>(p.hardSolved||0)>=5},
+  {id:'streak_3',name:'连续三天',desc:'连续 3 天写代码',icon:'📅',check:p=>(p.streak||0)>=3},
+  {id:'streak_7',name:'一周坚持',desc:'连续 7 天写代码',icon:'🌟',check:p=>(p.streak||0)>=7},
+  {id:'all_basics',name:'基础毕业',desc:'完成全部基础模块',icon:'🎓',check:p=>p.basicsDone},
+];
+
+function getAchievementStats(){
+  const prog=progress||{};
+  const exs=exercises||[];
+  const exDone=exs.filter(e=>e.status==='passed');
+  const hardSolved=exDone.filter(e=>e.difficulty==='hard').length;
+  const solved=exDone.length;
+
+  // Streak: check localStorage for daily activity
+  let streak=0;
+  try{
+    const hist=JSON.parse(localStorage.getItem('c-streak')||'[]');
+    const today=new Date().toISOString().slice(0,10);
+    for(let i=hist.length-1;i>=0;i--){
+      if(hist[i]===today)continue;
+      const d=new Date(hist[i]);const expected=new Date();
+      expected.setDate(expected.getDate()-(hist.length-1-i));
+      if(d.toISOString().slice(0,10)===expected.toISOString().slice(0,10))streak++;
+      else break;
+    }
+    if(hist[hist.length-1]===today)streak++;
+  }catch(e){}
+
+  // Basics done: check first 5 modules
+  const basicsDone=!!progress['hello-world']&&!!progress['variables']&&!!progress['operators'];
+
+  return{
+    firstRun:localStorage.getItem('c-ach-first_run')==='1',
+    firstAC:localStorage.getItem('c-ach-first_ac')==='1',
+    solved,hardSolved,streak,basicsDone,
+  };
+}
+
+function checkAchievements(){
+  const stats=getAchievementStats();
+  const unlocked=JSON.parse(localStorage.getItem('c-ach')||'[]');
+  let newAch=[];
+  for(const ach of ACHIEVEMENTS){
+    if(unlocked.includes(ach.id))continue;
+    if(ach.check(stats)){
+      unlocked.push(ach.id);
+      newAch.push(ach);
+    }
+  }
+  localStorage.setItem('c-ach',JSON.stringify(unlocked));
+  // Show toast for new achievements
+  for(const a of newAch){
+    toast(a.icon+' '+a.name+'解锁！ '+a.desc,'ok');
+  }
+}
+
+// Record daily streak
+function recordDailyActivity(){
+  try{
+    const today=new Date().toISOString().slice(0,10);
+    let hist=JSON.parse(localStorage.getItem('c-streak')||'[]');
+    if(hist[hist.length-1]!==today){
+      hist.push(today);
+      if(hist.length>365)hist=hist.slice(-365);
+      localStorage.setItem('c-streak',JSON.stringify(hist));
+    }
+  }catch(e){}
+}
+
+// ═══════════════════ DAILY PROBLEM ═══════════════════
+function getDailyProblem(){
+  if(!exercises.length)return null;
+  const today=new Date().toISOString().slice(0,10);
+  const stored=localStorage.getItem('c-daily');
+  if(stored){
+    try{
+      const d=JSON.parse(stored);
+      if(d.date===today)return exercises.find(e=>e.id===d.id)||null;
+    }catch(e){}
+  }
+  // Pick based on date hash
+  const hash=[...today].reduce((a,c)=>a+c.charCodeAt(0),0);
+  const idx=hash%exercises.length;
+  const ex=exercises[idx];
+  localStorage.setItem('c-daily',JSON.stringify({date:today,id:ex.id}));
+  return ex;
+}
+
+// ═══════════════════ SHORTCUT HANDLERS ═══════════════════
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==="k"){
+    e.preventDefault();toggleShortcuts();
+  }
+  if((e.ctrlKey||e.metaKey)&&e.key==="s"){
+    e.preventDefault();$("#btn-fmt").click();
+  }
+  if(e.key==="Escape"){
+    if($("#shortcut-overlay").classList.contains('on'))toggleShortcuts();
+  }
+});
+
 // ═══════════════════ STARTUP ═══════════════════
 (async()=>{
   await loadData();
@@ -757,4 +1157,6 @@ if(localStorage.getItem('c-lt')==='1')applyLightMode(true);
   showWelcome();
   // Show onboarding after a short delay (only first visit)
   setTimeout(showOnboarding,600);
+  // Check achievements on startup
+  setTimeout(checkAchievements,1200);
 })();

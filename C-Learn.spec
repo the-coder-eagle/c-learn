@@ -14,6 +14,7 @@ a = Analysis(
     hiddenimports=[
         'flask', 'webview', 'services', 'simulator',
         'yaml', 'pygments', 'pygments.lexers', 'pygments.lexers.c_cpp',
+        'dotenv',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
 )

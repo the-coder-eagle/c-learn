@@ -8,6 +8,7 @@ from pathlib import Path
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).parent))
 
+from typing import Optional
 from flask import Flask, request, jsonify, send_from_directory
 from services import (
     load_modules, load_exercises, load_progress, save_progress,
@@ -17,7 +18,7 @@ import services  # for _runner singleton access
 from simulator import CSimulator, EXAMPLES
 
 # Global simulator instance (one per session)
-_simulator: CSimulator = None
+_simulator: Optional[CSimulator] = None
 
 app = Flask(__name__, static_folder="web", static_url_path="")
 

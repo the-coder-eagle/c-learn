@@ -18,6 +18,9 @@ Thumbs.db
 # User data
 progress.json
 
+# Environment (keep .env.example in version control)
+.env
+
 # Build-only packages (pip installed for PyInstaller)
 tools/python/Lib/site-packages/flask/
 tools/python/Lib/site-packages/flask-*.dist-info/

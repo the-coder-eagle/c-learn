@@ -10,13 +10,14 @@
 
 <!-- ═══════════════════ TOPBAR ═══════════════════ -->
 <div id="topbar">
-  <button id="btn-sidebar" title="切换侧栏 (Ctrl+B)">☰</button>
+  <button id="btn-sidebar" title="切换侧栏 (Ctrl+B)" aria-label="切换侧栏">☰</button>
   <div class="logo">C 语言学习<em>即学即写</em></div>
   <div class="sep"></div>
   <div class="modes">
     <button class="on" data-mode="learn">📖 学习</button>
     <button data-mode="practice">💻 练习</button>
     <button data-mode="visualize">🔍 可视化</button>
+    <button data-mode="free" title="自由编写，代码自动保存">📝 自由写</button>
   </div>
   <div class="gap"></div>
   <div class="ctrl-group"><span>界面</span><button id="font-dn">−</button><span id="font-lbl">14px</span><button id="font-up">+</button></div>
@@ -29,8 +30,8 @@
   <span class="theme-dot" id="td-c" style="background:#22D3EE" onclick="setAccent('cyan')" title="青色"></span>
   <span class="theme-dot" id="td-a" style="background:#FBBF24" onclick="setAccent('amber')" title="琥珀"></span>
   <span class="theme-dot" id="td-r" style="background:#FB7185" onclick="setAccent('rose')" title="玫瑰"></span>
-  <button id="btn-light" title="亮暗切换">☀️</button>
-  <button id="btn-help" title="使用帮助">❓</button>
+  <button id="btn-light" title="亮暗切换" aria-label="亮暗切换">☀️</button>
+  <button id="btn-help" title="使用帮助" aria-label="使用帮助">❓</button>
 </div>
 
 <!-- ═══════════════════ MAIN LAYOUT ═══════════════════ -->
@@ -50,6 +51,7 @@
       <span class="sp"></span>
       <div class="history-wrap"><button class="btn-g" id="btn-history">🕐 历史</button><div class="history-menu" id="history-menu"></div></div>
       <button class="btn-g" id="btn-inspect">🔍 变量</button>
+      <button class="btn-g" id="btn-fmt" title="美化代码格式">🎨 美化</button>
       <button class="btn-g" id="btn-reset" style="display:none">↺ 重置</button>
       <button class="btn-sub" id="btn-submit" style="display:none">✓ 提交</button>
       <button class="btn-run" id="btn-run">▶ 运行</button>
@@ -89,6 +91,9 @@
       <button class="btn-g" id="viz-ex1">例1:指针</button>
       <button class="btn-g" id="viz-ex2">例2:函数</button>
       <button class="btn-g" id="viz-ex3">例3:数组</button>
+      <button class="btn-g" id="viz-ex4">例4:if</button>
+      <button class="btn-g" id="viz-ex5">例5:while</button>
+      <button class="btn-g" id="viz-ex6">例6:for</button>
       <button class="btn-g" id="viz-custom">📝 自写代码</button>
       <button class="btn-run" id="viz-load">加载代码</button>
     </div>
@@ -153,6 +158,27 @@
   </div>
 </div>
 
-<script src="/app.js?v=11"></script>
+<!-- ═══════════════════ AUTOCOMPLETE DROPDOWN ═══════════════════ -->
+<div id="ac-drop"></div>
+
+<!-- ═══════════════════ SHORTCUT PANEL ═══════════════════ -->
+<div id="shortcut-overlay">
+  <div id="shortcut-card">
+    <h2>⌨️ 快捷键</h2>
+    <table>
+      <tr><td><kbd>Ctrl+Enter</kbd></td><td>运行代码 / 提交判题</td></tr>
+      <tr><td><kbd>Ctrl+B</kbd></td><td>切换侧栏</td></tr>
+      <tr><td><kbd>Ctrl+K</kbd></td><td>快捷键面板</td></tr>
+      <tr><td><kbd>Ctrl+S</kbd></td><td>美化代码格式</td></tr>
+      <tr><td><kbd>Tab</kbd></td><td>插入 4 空格缩进</td></tr>
+      <tr><td><kbd>Ctrl+Plus</kbd></td><td>放大界面字体</td></tr>
+      <tr><td><kbd>Ctrl+Minus</kbd></td><td>缩小界面字体</td></tr>
+      <tr><td><kbd>Escape</kbd></td><td>关闭面板 / 停止运行</td></tr>
+    </table>
+    <button id="shortcut-close">关闭</button>
+  </div>
+</div>
+
+<script src="/app.js?v=12"></script>
 </body>
 </html>

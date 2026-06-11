@@ -1,6 +1,7 @@
 """
 C Code Simulator — 教学用逐行执行引擎
-支持子集: int, int*, 数组, 函数调用, printf, &, *, 赋值, 算术
+支持子集: int, int*, 数组, 函数调用, printf, &, *, 赋值, 算术,
+         if/else, while, for, do-while, break, continue, switch/case (v3)
 不调用编译器，纯 Python 模拟。正确性优先于完整性。
 """
 import re
@@ -67,6 +68,113 @@ int main() {
     return 0;
 }""",
     },
+    "if_else": {
+        "title": "例4 - if/else 条件判断",
+        "code": """#include <stdio.h>
+
+int main() {
+    int a = 5;
+
+    if (a > 3) {
+        printf("a > 3\\n");
+    } else {
+        printf("a <= 3\\n");
+    }
+
+    a = 2;
+    if (a > 3) {
+        printf("big\\n");
+    } else {
+        printf("small\\n");
+    }
+    return 0;
+}""",
+    },
+    "while_loop": {
+        "title": "例5 - while 循环",
+        "code": """#include <stdio.h>
+
+int main() {
+    int i = 0;
+
+    while (i < 3) {
+        printf("i = %d\\n", i);
+        i = i + 1;
+    }
+    return 0;
+}""",
+    },
+    "for_loop": {
+        "title": "例6 - for 循环",
+        "code": """#include <stdio.h>
+
+int main() {
+    int sum = 0;
+
+    for (int i = 1; i <= 3; i = i + 1) {
+        sum = sum + i;
+    }
+    printf("sum = %d\\n", sum);
+    return 0;
+}""",
+    },
+    "do_while": {
+        "title": "例7 - do-while 循环",
+        "code": """#include <stdio.h>
+
+int main() {
+    int i = 5;
+
+    do {
+        printf("i = %d\\n", i);
+        i = i + 1;
+    } while (i < 3);
+    return 0;
+}""",
+    },
+    "break_continue": {
+        "title": "例8 - break 与 continue",
+        "code": """#include <stdio.h>
+
+int main() {
+    int i = 0;
+
+    while (i < 10) {
+        i = i + 1;
+        if (i == 3) {
+            continue;
+        }
+        if (i == 5) {
+            break;
+        }
+        printf("%d\\n", i);
+    }
+    return 0;
+}""",
+    },
+    "switch_case": {
+        "title": "例9 - switch/case",
+        "code": """#include <stdio.h>
+
+int main() {
+    int x = 2;
+
+    switch (x) {
+        case 1:
+            printf("one");
+            break;
+        case 2:
+            printf("two");
+            break;
+        case 3:
+            printf("three");
+            break;
+        default:
+            printf("other");
+    }
+    return 0;
+}""",
+    },
 }
 
 
@@ -91,11 +199,11 @@ class StackFrame:
 
 
 class CSimulator:
-    """C 代码逐行模拟执行器"""
+    """C 代码逐行模拟执行器 — 支持变量、指针、控制流"""
 
     def __init__(self, code: str):
         self._raw = code
-        self._lines = []          # [(line_num, text, type), ...]
+        self._lines = []          # [(line_num, text, type, data_dict?), ...]
         self._ip = 0              # instruction pointer (index into _lines)
         self._stack: list[StackFrame] = []
         self._next_addr = 0x100   # 虚拟地址分配器
@@ -103,19 +211,27 @@ class CSimulator:
         self._history: list[dict] = []  # 每步的状态快照（用于回退）
         self._finished = False
         self._hints: list[str] = []
+        self._brace_map: dict[int, int] = {}  # 大括号配对 { → }
+        self._loop_stack: list[dict] = []     # 嵌套循环追踪
+        self._else_skip = False             # if 为真时跳过 else
+        self._switch_value = None           # switch 表达式值
+        self._case_matched = False          # 是否已匹配到 case
+        self._switch_active = False         # 是否在 switch 块内
+        self._func_map: dict[str, int] = {} # 函数名 → 起始行索引
+        self._return_stack: list[int] = []  # 返回地址栈
         self._parse()
 
     # ── 解析 ──────────────────────────────────────────
     def _parse(self):
-        """将代码分解为可执行的行列表"""
+        """将代码分解为可执行的行列表，同时建立大括号配对映射"""
         raw_lines = self._raw.split('\n')
         self._lines = []
-        in_function = False
-        brace_depth = 0
-        current_func = None
+        brace_stack = []  # stack of (brace_line_index)
 
         for raw in raw_lines:
             stripped = raw.strip()
+            line_idx = len(self._lines)  # index this line will have
+
             if not stripped:
                 self._lines.append((len(raw_lines), raw, "empty"))
                 continue
@@ -125,34 +241,162 @@ class CSimulator:
                 self._lines.append((len(raw_lines), raw, "skip"))
                 continue
 
-            # 函数定义头 (handles brace on same line like "int main() {")
+            # 函数定义头
             func_match = re.match(
                 r'(void|int)\s+(\w+)\s*\(([^)]*)\)\s*\{?\s*$', stripped)
-            if func_match and not in_function:
+            if func_match:
                 ret_type, name, params = func_match.groups()
+                self._func_map[name] = line_idx  # record function location
                 self._lines.append((len(raw_lines), raw, "func_def",
                                     {"name": name, "params": params}))
-                brace_depth += 1  # always increment for function entry
-                in_function = True
-                current_func = name
                 continue
 
-            # 大括号 (only count stand-alone braces)
+            # 大括号 — 建立配对 (standalone)
             if stripped == '{':
                 self._lines.append((len(raw_lines), raw, "brace_open"))
+                brace_stack.append(line_idx)
                 continue
+
             if stripped == '}':
                 self._lines.append((len(raw_lines), raw, "brace_close"))
+                if brace_stack:
+                    open_idx = brace_stack.pop()
+                    self._brace_map[open_idx] = line_idx
+                    self._brace_map[line_idx] = open_idx
+                continue
+
+            # "} else {" or "} else" — closes if body, opens else body
+            else_match = re.match(r'\}\s*else\s*(\{?)\s*$', stripped)
+            if else_match:
+                has_brace = else_match.group(1) == '{'
+                # 1) brace_close — closes if body
+                self._lines.append((len(raw_lines), raw, "brace_close"))
+                if brace_stack:
+                    open_idx = brace_stack.pop()
+                    self._brace_map[open_idx] = line_idx
+                    self._brace_map[line_idx] = open_idx
+                line_idx += 1  # next entry
+                # 2) else_kw
+                self._lines.append((len(raw_lines), raw, "else_kw"))
+                # 3) if } else { has opening brace, push it
+                if has_brace:
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # Standalone else
+            if stripped in ('else', 'else {'):
+                self._lines.append((len(raw_lines), raw, "else_kw"))
+                if stripped == 'else {':
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # if (condition) { — may have brace on same line
+            if_match = re.match(r'if\s*\((.+)\)\s*(\{?)\s*$', stripped)
+            if if_match:
+                condition = if_match.group(1).strip()
+                has_brace = if_match.group(2) == '{'
+                self._lines.append((len(raw_lines), raw, "if_start",
+                                    {"condition": condition}))
+                if has_brace:
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # while (condition) { — may have brace on same line
+            while_match = re.match(r'while\s*\((.+)\)\s*(\{?)\s*$', stripped)
+            if while_match:
+                condition = while_match.group(1).strip()
+                has_brace = while_match.group(2) == '{'
+                self._lines.append((len(raw_lines), raw, "while_start",
+                                    {"condition": condition}))
+                if has_brace:
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # for (init; cond; incr) { — may have brace on same line
+            for_match = re.match(r'for\s*\((.+);\s*(.+);\s*(.+)\)\s*(\{?)\s*$', stripped)
+            if for_match:
+                init, cond, incr, maybe_brace = for_match.groups()
+                has_brace = maybe_brace == '{'
+                self._lines.append((len(raw_lines), raw, "for_start",
+                                    {"init": init.strip(), "cond": cond.strip(),
+                                     "incr": incr.strip()}))
+                if has_brace:
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # do { — do-while loop start
+            do_match = re.match(r'do\s*\{?\s*$', stripped)
+            if do_match:
+                self._lines.append((len(raw_lines), raw, "do_start"))
+                if stripped.endswith('{'):
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # } while (cond); — do-while condition check
+            dw_match = re.match(r'\}\s*while\s*\((.+)\)\s*;\s*$', stripped)
+            if dw_match:
+                cond = dw_match.group(1).strip()
+                self._lines.append((len(raw_lines), raw, "brace_close"))
+                if brace_stack:
+                    open_idx = brace_stack.pop()
+                    self._brace_map[open_idx] = line_idx
+                    self._brace_map[line_idx] = open_idx
+                line_idx += 1
+                self._lines.append((len(raw_lines), raw, "while_check",
+                                    {"condition": cond}))
+                continue
+
+            # break;
+            if re.match(r'break\s*;\s*$', stripped):
+                self._lines.append((len(raw_lines), raw, "break_kw"))
+                continue
+
+            # continue;
+            if re.match(r'continue\s*;\s*$', stripped):
+                self._lines.append((len(raw_lines), raw, "continue_kw"))
+                continue
+
+            # switch (expr) {
+            sw_match = re.match(r'switch\s*\((.+)\)\s*\{?\s*$', stripped)
+            if sw_match:
+                expr = sw_match.group(1).strip()
+                has_brace = stripped.endswith('{')
+                self._lines.append((len(raw_lines), raw, "switch_start",
+                                    {"expr": expr}))
+                if has_brace:
+                    line_idx += 1
+                    self._lines.append((len(raw_lines), raw, "brace_open"))
+                    brace_stack.append(line_idx)
+                continue
+
+            # case N: or default:
+            case_match = re.match(r'case\s+(.+)\s*:\s*$', stripped)
+            if case_match:
+                self._lines.append((len(raw_lines), raw, "case_label",
+                                    {"value": case_match.group(1).strip()}))
+                continue
+
+            if re.match(r'default\s*:\s*$', stripped):
+                self._lines.append((len(raw_lines), raw, "default_label"))
                 continue
 
             # 普通语句
             if stripped.endswith(';'):
-                stmt_type = self._classify_stmt(stripped, current_func)
+                stmt_type = self._classify_stmt(stripped, None)
                 self._lines.append(
-                    (len(raw_lines), raw, stmt_type, {"func": current_func}))
-            elif stripped.endswith('{'):
-                brace_depth += 1
-                self._lines.append((len(raw_lines), raw, "stmt_block"))
+                    (len(raw_lines), raw, stmt_type, {"func": None}))
             else:
                 self._lines.append((len(raw_lines), raw, "unknown"))
 
@@ -167,9 +411,9 @@ class CSimulator:
             return "printf"
         if s.startswith('return'):
             return "return"
-        if '= &' in s:
+        if '= &' in s or (s.startswith('int *') and '= &' in s):
             return "addr_assign"
-        if '*p' in s.lower() or s.startswith('*'):
+        if '*p' in s.lower() or (s.startswith('*') and '=' in s):
             return "deref_assign"
         if '=' in s:
             return "assign"
@@ -207,31 +451,71 @@ class CSimulator:
         v = self._find_var(name)
         if v:
             v.value = value
-            # 如果是指针，更新指向信息
             if v.type == "int*":
                 self._update_points_to(v)
 
     def _update_points_to(self, ptr: Variable):
-        """更新指针的 points_to 信息"""
+        """更新指针的 points_to 信息（含数组元素地址匹配）"""
         if not isinstance(ptr.value, str) or not ptr.value.startswith("0x"):
             ptr.points_to = None
             return
-        # 在所有栈帧中查找地址匹配的变量
         for frame in reversed(self._stack):
             for var in frame.variables.values():
                 if var.address == ptr.value and var.name != ptr.name:
                     ptr.points_to = var.name
                     return
+                # Check array element addresses
+                if var.elements:
+                    for el in var.elements:
+                        if el.get("addr") == ptr.value:
+                            ptr.points_to = var.name
+                            return
         ptr.points_to = None
+
+    # ── 条件求值 ──────────────────────────────────────
+    def _eval_condition(self, cond: str) -> bool:
+        """Evaluate a C boolean expression like 'a > 3', 'i < 10', '*p != 0'.
+
+        Supports: >, <, >=, <=, ==, !=, simple variables, dereferences, literals.
+        Returns True/False.
+        """
+        cond = cond.strip()
+
+        # Handle parenthesized expressions
+        if cond.startswith('(') and cond.endswith(')'):
+            return self._eval_condition(cond[1:-1])
+
+        # Try each operator (longest first to avoid > matching >=)
+        for op in ['>=', '<=', '!=', '==', '>', '<']:
+            if op in cond:
+                left, right = cond.split(op, 1)
+                l_val = self._eval_expr(left.strip())
+                r_val = self._eval_expr(right.strip())
+                if op == '>':
+                    return l_val > r_val
+                if op == '<':
+                    return l_val < r_val
+                if op == '>=':
+                    return l_val >= r_val
+                if op == '<=':
+                    return l_val <= r_val
+                if op == '==':
+                    return l_val == r_val
+                if op == '!=':
+                    return l_val != r_val
+
+        # Single value: truthy if != 0
+        val = self._eval_expr(cond)
+        return val != 0
 
     # ── 执行一步 ──────────────────────────────────────
     def step(self) -> dict:
-        """执行当前行，前进一行，返回状态"""
+        """执行当前行，前进一行或跳转，返回状态"""
         if self._finished:
             return self._get_state()
 
-        # 保存快照（用于回退）
-        self._history.append(self._get_state())
+        # 保存快照（用于回退）— skip lines/variables to save memory
+        self._history.append(self._get_state(for_history=True))
 
         if self._ip >= len(self._lines):
             self._finished = True
@@ -242,6 +526,7 @@ class CSimulator:
         current_func = data.get("func")
 
         self._hints = []
+        jump_to = None  # set by handlers to override _ip increment
 
         try:
             if stmt_type == "func_def":
@@ -259,28 +544,62 @@ class CSimulator:
             elif stmt_type == "printf":
                 self._handle_printf(raw)
             elif stmt_type == "func_call":
-                self._handle_func_call(raw)
+                jump_to = self._handle_func_call(raw)
             elif stmt_type == "return":
-                self._handle_return(raw)
+                jump_to = self._handle_return(raw)
+            elif stmt_type == "if_start":
+                jump_to = self._handle_if(data)
+            elif stmt_type == "else_kw":
+                jump_to = self._handle_else()
+            elif stmt_type == "while_start":
+                jump_to = self._handle_while(data)
+            elif stmt_type == "for_start":
+                jump_to = self._handle_for(data)
+            elif stmt_type == "do_start":
+                self._handle_do(data)
+            elif stmt_type == "while_check":
+                jump_to = self._handle_while_check(data)
+            elif stmt_type == "break_kw":
+                jump_to = self._handle_break()
+            elif stmt_type == "continue_kw":
+                jump_to = self._handle_continue()
+            elif stmt_type == "switch_start":
+                self._handle_switch(data)
+            elif stmt_type == "case_label":
+                jump_to = self._handle_case(data)
+            elif stmt_type == "default_label":
+                self._handle_default()
             elif stmt_type == "brace_close":
-                self._handle_brace_close(current_func)
+                jump_to = self._handle_brace_close(current_func)
             # skip, empty, brace_open, unknown — 前进但不执行
         except Exception as e:
             self._hints.append(f"⚠ 执行错误: {e}")
 
-        self._ip += 1
+        if jump_to is not None:
+            self._ip = jump_to
+        else:
+            self._ip += 1
         return self._get_state()
 
     def step_back(self) -> dict:
         """回退一步"""
         if self._history:
             prev = self._history.pop()
-            # Restore state from snapshot
             self._ip = prev["_ip"]
             self._next_addr = prev["_next_addr"]
             self._output = prev["_output"]
             self._finished = prev["_finished"]
             self._hints = []
+            # Restore loop stack
+            self._loop_stack = list(prev.get("_loop_stack", []))
+            self._else_skip = prev.get("_else_skip", False)
+            self._switch_active = prev.get("_switch_active", False)
+            self._switch_value = prev.get("_switch_value")
+            self._case_matched = prev.get("_case_matched", False)
+            self._return_stack = list(prev.get("_return_stack", []))
+            # Restore stack frames and variables (v4 fix)
+            if "_stack_data" in prev:
+                self._restore_stack(prev["_stack_data"])
         return self._get_state()
 
     def reset(self):
@@ -292,18 +611,372 @@ class CSimulator:
         self._history = []
         self._finished = False
         self._hints = []
+        self._loop_stack = []
+        self._else_skip = False
+        self._switch_value = None
+        self._case_matched = False
+        self._switch_active = False
+        self._return_stack = []
+
+    def _restore_stack(self, stack_data: list):
+        """从序列化数据重建栈帧（用于 step_back 回退）"""
+        self._stack = []
+        for fd in stack_data:
+            frame = StackFrame(name=fd["name"], return_line=fd.get("return_line", 0))
+            for vname, vdata in fd.get("variables", {}).items():
+                var = Variable(
+                    name=vdata["name"], type=vdata["type"],
+                    value=vdata["value"], address=vdata["address"],
+                    size=vdata.get("size", 4), elements=vdata.get("elements"),
+                    points_to=vdata.get("points_to"),
+                )
+                frame.variables[vname] = var
+            self._stack.append(frame)
 
     def run_all(self) -> dict:
         """运行到结束"""
-        while not self._finished:
+        max_steps = 5000  # safety limit
+        steps = 0
+        while not self._finished and steps < max_steps:
             self.step()
+            steps += 1
+        if steps >= max_steps:
+            self._hints.append("⚠ 达到最大步数限制 (5000)，可能死循环")
+            self._finished = True
         return self._get_state()
+
+    # ── 控制流处理器 ──────────────────────────────────
+    def _find_brace_open_after(self, start: int) -> Optional[int]:
+        """Find the next brace_open after start, return its index or None."""
+        for i in range(start, len(self._lines)):
+            _, _, st, *_ = self._lines[i]
+            if st == "brace_open":
+                return i
+        return None
+
+    def _skip_block(self, from_ip: int) -> int:
+        """Skip past a block by counting brace depth. Returns the index after the
+        matching brace_close, or from_ip+1 if no block found."""
+        depth = 0
+        for i in range(from_ip, len(self._lines)):
+            _, _, st, *_ = self._lines[i]
+            if st == "brace_open":
+                depth += 1
+            elif st == "brace_close":
+                depth -= 1
+                if depth == 0:
+                    return i
+        return from_ip + 1  # fallback
+
+    def _handle_if(self, data: dict) -> Optional[int]:
+        """if (condition) — evaluate and jump accordingly."""
+        cond = data.get("condition", "0")
+        result = self._eval_condition(cond)
+        self._hints.append(
+            f"if ({cond}) → {'真' if result else '假'}，"
+            f"{'执行 then 分支' if result else '跳过 then 分支'}"
+        )
+
+        # Find the body's brace_open (either next line or synthesized from same-line {)
+        body_open = self._find_brace_open_after(self._ip + 1)
+
+        if result:
+            # Condition true: execute body, skip else (if any) later
+            self._else_skip = True
+            return None  # advance to body
+
+        # Condition false: skip the if body
+        if body_open is not None:
+            close_ip = self._brace_map.get(body_open)
+            if close_ip is not None:
+                # Check if there's an else_kw after the if body's closing }
+                for j in range(close_ip + 1, min(close_ip + 4, len(self._lines))):
+                    _, _, st, *_ = self._lines[j]
+                    if st == "else_kw":
+                        self._else_skip = False  # we're entering else
+                        return j  # jump directly to else_kw
+                # No else: skip past the closing }
+                return close_ip
+        else:
+            # Single-statement if (no braces): skip exactly one statement
+            for i in range(self._ip + 1, len(self._lines)):
+                _, _, st, *_ = self._lines[i]
+                if st not in ("skip", "empty"):
+                    return i + 1  # skip past the single body statement
+        return None
+
+    def _handle_else(self) -> Optional[int]:
+        """else — skip body if if-was-true, or enter if if-was-false."""
+        if getattr(self, '_else_skip', False):
+            # If was true — skip the else body entirely
+            self._else_skip = False
+            self._hints.append("else 分支 — 跳过（if 条件为真）")
+            # Skip past else body by depth-counting from current position
+            body_open = self._find_brace_open_after(self._ip + 1)
+            if body_open is not None:
+                close_ip = self._brace_map.get(body_open)
+                if close_ip is not None:
+                    return close_ip
+            return self._skip_block(self._ip + 1)
+        else:
+            # If was false — enter else body normally
+            self._hints.append("else 分支 — 进入（if 条件为假）")
+            return None
+
+    def _handle_while(self, data: dict) -> Optional[int]:
+        """while (condition) — evaluate and loop."""
+        cond = data.get("condition", "0")
+        result = self._eval_condition(cond)
+        self._hints.append(
+            f"while ({cond}) → {'真' if result else '假'}"
+        )
+
+        body_open = self._find_brace_open_after(self._ip + 1)
+
+        if not result:
+            # Condition false: exit loop — pop from loop_stack and skip body
+            popped = None
+            for i in range(len(self._loop_stack) - 1, -1, -1):
+                if self._loop_stack[i]["start_ip"] == self._ip:
+                    popped = self._loop_stack.pop(i)
+                    break
+            if popped:
+                self._hints.append(f"  {popped['type']} 条件为假，退出循环")
+            if body_open is not None and body_open in self._brace_map:
+                return self._brace_map[body_open]
+            return None
+
+        # Condition true: record loop entry for jump-back
+        # Check if this IP is already tracked (re-entering after loop-back)
+        already_tracked = any(e.get("start_ip") == self._ip for e in self._loop_stack)
+        if not already_tracked:
+            self._loop_stack.append({
+                "start_ip": self._ip,
+                "type": "while",
+            })
+            self._hints.append(f"  进入循环体 (第 {len(self._loop_stack)} 层嵌套)")
+        return None  # continue to body
+
+    def _handle_for(self, data: dict) -> Optional[int]:
+        """for (init; cond; incr) — initialize, check, loop."""
+        init = data.get("init", "")
+        cond = data.get("cond", "1")
+        incr = data.get("incr", "")
+
+        # Check if this is first entry (not a loop-back jump)
+        already_tracked = any(e.get("start_ip") == self._ip for e in self._loop_stack)
+
+        if not already_tracked:
+            # Execute init: e.g. "int i = 1" or "i = 0"
+            if init:
+                self._hints.append(f"for 初始化: {init}")
+                self._execute_inline_stmt(init)
+
+        # Evaluate condition
+        result = self._eval_condition(cond)
+        self._hints.append(
+            f"for (; {cond}; {incr}) → 条件 {'真' if result else '假'}"
+        )
+
+        body_open = self._find_brace_open_after(self._ip + 1)
+
+        if not result:
+            # Condition false: exit loop — pop from loop_stack and skip body
+            for idx in range(len(self._loop_stack) - 1, -1, -1):
+                if self._loop_stack[idx]["start_ip"] == self._ip:
+                    popped = self._loop_stack.pop(idx)
+                    self._hints.append(f"  {popped['type']} 条件为假，退出循环")
+                    break
+            if body_open is not None and body_open in self._brace_map:
+                return self._brace_map[body_open]
+            return None
+
+        # Condition true: record loop entry
+        if not already_tracked:
+            self._loop_stack.append({
+                "start_ip": self._ip,
+                "type": "for",
+                "incr": incr,
+            })
+            self._hints.append(f"  进入循环体 (第 {len(self._loop_stack)} 层嵌套)")
+        return None  # continue to body
+
+    # ── do-while / break / continue / switch ──────────
+    def _handle_do(self, data: dict) -> None:
+        """do { — always enter body first, condition checked later."""
+        self._hints.append("do-while: 先执行循环体，再检查条件")
+        # Record the do position for later break/continue
+        self._loop_stack.append({
+            "start_ip": self._ip,
+            "type": "do_while",
+        })
+
+    def _handle_while_check(self, data: dict) -> Optional[int]:
+        """} while (cond); — evaluate condition, jump back to do if true."""
+        cond = data.get("condition", "0")
+        result = self._eval_condition(cond)
+        self._hints.append(
+            f"while ({cond}) → {'真' if result else '假'}"
+        )
+        if result:
+            # Find the matching do_start and jump back
+            if self._loop_stack:
+                loop = self._loop_stack[-1]
+                if loop["type"] == "do_while":
+                    self._hints.append("  条件为真，跳回 do 循环体")
+                    return loop["start_ip"] + 1  # +1 to skip do_start itself
+        else:
+            # Exit loop
+            if self._loop_stack:
+                for idx in range(len(self._loop_stack) - 1, -1, -1):
+                    if self._loop_stack[idx]["type"] == "do_while":
+                        self._loop_stack.pop(idx)
+                        self._hints.append("  条件为假，退出 do-while 循环")
+                        break
+        return None
+
+    def _handle_break(self) -> Optional[int]:
+        """break; — exit the innermost loop or switch."""
+        if self._switch_active:
+            self._hints.append("break — 跳出 switch")
+            # Find the switch_start by scanning backwards
+            for i in range(self._ip - 1, -1, -1):
+                _, _, st, *_ = self._lines[i]
+                if st == "switch_start":
+                    body_open = self._find_brace_open_after(i + 1)
+                    if body_open is not None and body_open in self._brace_map:
+                        self._switch_active = False
+                        self._case_matched = False
+                        self._switch_value = None
+                        return self._brace_map[body_open]  # jump to closing }
+                    break
+            return None
+
+        if self._loop_stack:
+            loop = self._loop_stack.pop()
+            self._hints.append(f"break — 跳出 {loop['type']} 循环")
+            loop_start = loop["start_ip"]
+            body_open = self._find_brace_open_after(loop_start + 1)
+            if loop["type"] == "do_while":
+                body_open = self._find_brace_open_after(loop_start + 1)
+            if body_open is not None and body_open in self._brace_map:
+                return self._brace_map[body_open] + 1  # +1 to skip the closing }
+        self._hints.append("break — 无循环可跳出")
+        return None
+
+    def _handle_continue(self) -> Optional[int]:
+        """continue; — skip rest of current iteration."""
+        if self._loop_stack:
+            loop = self._loop_stack[-1]
+            loop_type = loop["type"]
+            self._hints.append(f"continue — 跳到 {loop_type} 下一轮迭代")
+
+            if loop_type == "for":
+                incr = loop.get("incr", "")
+                if incr:
+                    self._execute_inline_stmt(incr)
+                return loop["start_ip"]  # jump back to for condition
+
+            if loop_type == "while":
+                return loop["start_ip"]  # jump back to while condition
+
+            if loop_type == "do_while":
+                # Jump to the while_check (end of do-while body)
+                body_open = self._find_brace_open_after(loop["start_ip"] + 1)
+                if body_open is not None and body_open in self._brace_map:
+                    close_ip = self._brace_map[body_open]
+                    # while_check is at close_ip + 1
+                    return close_ip + 1
+        self._hints.append("continue — 无循环可跳过")
+        return None
+
+    def _handle_switch(self, data: dict) -> None:
+        """switch (expr) — evaluate expression and set up case matching."""
+        expr = data.get("expr", "0")
+        val = self._eval_expr(expr)
+        self._switch_value = val
+        self._case_matched = False
+        self._switch_active = True
+        self._hints.append(f"switch ({expr}) → 值为 {val}，开始匹配 case")
+
+    def _handle_case(self, data: dict) -> Optional[int]:
+        """case N: — check if matches switch value. Skip body if not matched."""
+        case_val_str = data.get("value", "0")
+        case_val = self._eval_expr(case_val_str)
+
+        # If we're already executing a matched case (fall-through), continue
+        if self._case_matched:
+            self._hints.append(f"case {case_val}: 穿透执行")
+            return None
+
+        # Check if this case matches
+        if case_val == self._switch_value:
+            self._case_matched = True
+            self._hints.append(f"case {case_val}: ✓ 匹配！")
+            return None  # enter body
+
+        # Not matched — skip to next case/default or closing }
+        self._hints.append(f"case {case_val}: ✗ 跳过")
+        depth = 0
+        for i in range(self._ip + 1, len(self._lines)):
+            _, _, st, *_ = self._lines[i]
+            if st == "brace_open":
+                depth += 1
+            elif st == "brace_close":
+                if depth == 0:
+                    return i  # end of switch
+                depth -= 1
+            elif st in ("case_label", "default_label") and depth == 0:
+                return i  # jump to next case/default
+        return None
+
+    def _handle_default(self) -> None:
+        """default: — always matches if no case has matched yet."""
+        if not self._case_matched:
+            self._case_matched = True
+            self._hints.append("default: 无匹配 case，进入默认分支")
+        else:
+            self._hints.append("default: 穿透执行（已有匹配 case）")
+
+    def _execute_inline_stmt(self, stmt: str):
+        """Execute a simple inline statement like 'int i = 0' or 'i = i + 1'.
+
+        Used for for-loop init/incr clauses.
+        """
+        s = stmt.strip().rstrip(';')
+        if not s:
+            return
+
+        # Variable declaration with init: "int i = 0"
+        decl_match = re.match(r'int\s+(\w+)\s*=\s*(.+)$', s)
+        if decl_match:
+            name, expr = decl_match.groups()
+            val = self._eval_expr(expr.strip())
+            addr = self._alloc_addr()
+            var = Variable(name=name, type="int", value=val, address=addr)
+            if self._frame:
+                self._frame.variables[name] = var
+            self._hints.append(f"  声明 {name} = {val}，地址 {addr}")
+            return
+
+        # Assignment: "i = i + 1" or "sum = sum + i"
+        assign_match = re.match(r'(\w+)\s*=\s*(.+)$', s)
+        if assign_match:
+            name, expr = assign_match.groups()
+            val = self._eval_expr(expr.strip())
+            v = self._find_var(name)
+            old_val = v.value if v else None
+            if v:
+                v.value = val
+            self._hints.append(
+                f"  {name} = {val}"
+                + (f"（之前: {old_val}）" if old_val is not None and old_val != val else "")
+            )
 
     # ── 语句处理器 ────────────────────────────────────
     def _handle_func_def(self, data: dict):
         """进入函数定义"""
         name = data["name"]
-        params_str = data.get("params", "")
         frame = StackFrame(name=name)
         self._stack.append(frame)
         self._hints.append(f"进入函数 {name}()，创建新的栈帧")
@@ -411,7 +1084,7 @@ class CSimulator:
                 self._hints.append(f"数组 {name}[{idx}] = {val}")
             return
 
-        # 指针算术: p = p + 1
+        # 指针算术: p = p + 1 (only for int* type)
         ptr_arith = re.match(r'(\w+)\s*=\s*(\w+)\s*\+\s*(\d+)\s*$', s)
         if ptr_arith:
             target, ptr_name, offset = ptr_arith.groups()
@@ -425,7 +1098,7 @@ class CSimulator:
                 self._update_points_to(ptr_var)
                 self._hints.append(
                     f"指针 {ptr_name} + {offset}，地址从 0x{old_addr:03X} 移到 {new_addr}（+{offset*4} 字节）")
-            return
+                return
 
         # 普通赋值
         m = re.match(r'(\w+)\s*=\s*(.+)$', s)
@@ -454,7 +1127,7 @@ class CSimulator:
                     f"&{target} 取出地址 {target_var.address}，{ptr_name} 存储该地址，现在 {ptr_name} 指向 {target}")
 
     def _handle_deref_assign(self, raw: str):
-        """*p = value;"""
+        """*p = value; — 支持数组元素写入"""
         s = raw.strip().rstrip(';')
         m = re.match(r'\*\s*(\w+)\s*=\s*(.+)$', s)
         if m:
@@ -464,9 +1137,19 @@ class CSimulator:
             if ptr_var and ptr_var.points_to:
                 target = self._find_var(ptr_var.points_to)
                 if target:
+                    # If target is an array, write to the element at pointer offset
+                    if target.elements and isinstance(ptr_var.value, str) and ptr_var.value.startswith("0x"):
+                        base = int(target.address, 16)
+                        cur = int(ptr_var.value, 16)
+                        offset = (cur - base) // 4
+                        if 0 <= offset < len(target.elements):
+                            old_val = target.elements[offset]["value"]
+                            target.elements[offset]["value"] = val
+                            self._hints.append(
+                                f"*{ptr_name} 解引用 → 修改 {target.name}[{offset}]：{old_val} → {val}")
+                            return
                     old_val = target.value
                     target.value = val
-                    # 如果是数组元素，也更新
                     self._hints.append(
                         f"*{ptr_name} 解引用 → 修改 {target.name} 的值：{old_val} → {val}")
                 else:
@@ -486,57 +1169,189 @@ class CSimulator:
             result = fmt
             for i, arg in enumerate(args):
                 val = self._eval_expr(arg)
-                # 替换 %d, %s 等
                 if '%d' in result:
                     result = result.replace('%d', str(val), 1)
                 elif '%s' in result:
                     result = result.replace('%s', str(val), 1)
-                elif '\\n' in result:
-                    result = result.replace('\\n', '\n')
             result = result.replace('\\n', '\n')
             self._output += result
             self._hints.append(f"printf 输出: {result.strip()}")
 
-    def _handle_func_call(self, raw: str):
-        """f(&a, &b); — 函数调用"""
+    def _handle_func_call(self, raw: str) -> Optional[int]:
+        """f(&a, &b); — 实际执行函数调用"""
         s = raw.strip().rstrip(';')
         m = re.match(r'(\w+)\s*\(([^)]*)\)', s)
-        if m:
-            func_name, args_str = m.groups()
-            if func_name == 'return':
-                return
-            # 简单处理：为被调函数创建新栈帧，传递参数
-            # 对于我们的子集，参数是 &var 形式
-            arg_names = [a.strip().lstrip('&') for a in args_str.split(',') if a.strip()]
-            self._hints.append(
-                f"调用 {func_name}({', '.join(arg_names)})——参数传递：")
+        if not m:
+            return None
+        func_name, args_str = m.groups()
+        if func_name in ('return', 'printf', 'scanf', 'main'):
+            return None  # built-in or already handled
 
-            for arg_name in arg_names:
-                v = self._find_var(arg_name)
-                if v:
+        # Find the function definition
+        if func_name not in self._func_map:
+            self._hints.append(f"⚠ 函数 {func_name}() 未定义")
+            return None
+
+        # Parse arguments from the call
+        raw_args = [a.strip() for a in args_str.split(',') if a.strip()]
+        arg_vars = []
+        for arg in raw_args:
+            is_ref = arg.startswith('&')
+            var_name = arg.lstrip('&')
+            v = self._find_var(var_name)
+            if v:
+                arg_vars.append({'name': var_name, 'var': v, 'is_ref': is_ref})
+            else:
+                # Literal number argument
+                try:
+                    lit_val = int(var_name)
+                    # Create a temporary pseudo-variable
+                    lit_var = Variable(name=var_name, type="int", value=lit_val, address="0x000")
+                    arg_vars.append({'name': var_name, 'var': lit_var, 'is_ref': False})
+                except ValueError:
+                    pass  # ignore unresolvable args
+
+        # Find the function definition's parameter names
+        func_start = self._func_map[func_name]
+        _, func_raw, _, func_data = self._lines[func_start]
+        params_str = func_data.get("params", "")
+        param_names = [p.strip().split()[-1].lstrip('*') for p in params_str.split(',') if p.strip()]
+
+        # Create new frame for the function
+        frame = StackFrame(name=func_name)
+        self._stack.append(frame)
+        self._hints.append(f"调用 {func_name}()，创建栈帧 — 参数传递：")
+
+        # Map arguments to parameters
+        for i, pname in enumerate(param_names):
+            if i < len(arg_vars):
+                av = arg_vars[i]
+                if av['is_ref']:
+                    # &var → create pointer parameter holding var's address
+                    addr = self._alloc_addr()
+                    ptr_var = Variable(
+                        name=pname, type="int*",
+                        value=av['var'].address,
+                        address=addr,
+                        points_to=av['name'])
+                    frame.variables[pname] = ptr_var
                     self._hints.append(
-                        f"  &{arg_name} → 传递地址 {v.address}（值: {v.value}）")
+                        f"  {pname} ← &{av['name']} (地址 {av['var'].address})")
+                else:
+                    # Pass by value
+                    addr = self._alloc_addr()
+                    val_var = Variable(
+                        name=pname, type=av['var'].type,
+                        value=av['var'].value,
+                        address=addr)
+                    frame.variables[pname] = val_var
+                    self._hints.append(
+                        f"  {pname} ← {av['name']} (值: {av['var'].value})")
 
-    def _handle_return(self, raw: str):
-        """return 语句"""
+        # Save return address (line AFTER this call) and jump to function body
+        self._return_stack.append(self._ip + 1)  # return here after function completes
+        # Find first executable line in function body (after func_def, past brace_open)
+        for i in range(func_start + 1, len(self._lines)):
+            _, _, st, *_ = self._lines[i]
+            if st not in ("skip", "empty", "brace_open", "func_def"):
+                return i  # jump to first body line
+        return None  # empty function body
+
+    def _handle_return(self, raw: str) -> Optional[int]:
+        """return 语句 — 弹出栈帧，跳回调用点"""
         s = raw.strip().rstrip(';')
+        return_val = None
         m = re.match(r'return\s+(.+)$', s)
         if m:
-            val = self._eval_expr(m.group(1))
-            self._hints.append(f"返回 {val}")
-        else:
-            self._hints.append("函数返回")
+            return_val = self._eval_expr(m.group(1))
+            self._hints.append(f"返回 {return_val}")
 
-    def _handle_brace_close(self, func: Optional[str]):
-        """} — 可能是函数结束，弹出栈帧"""
-        if func and self._stack and self._stack[-1].name == func:
+        # Pop the function frame
+        if self._stack:
             frame = self._stack.pop()
-            self._hints.append(f"退出函数 {frame.name}()，栈帧弹出")
+            self._hints.append(f"退出 {frame.name}()，栈帧弹出")
+
+        # Jump back to caller
+        if self._return_stack:
+            ret_addr = self._return_stack.pop()
+            return ret_addr  # jump back to call site (+1 will advance past call)
+
+        # For main() return, just advance
+        self._hints.append("程序结束")
+        return None
+
+    def _handle_brace_close(self, func: Optional[str]) -> Optional[int]:
+        """} — 可能结束函数、循环或条件块"""
+        # Check if this closes a loop (while/for only — do-while jumps in while_check)
+        if self._loop_stack:
+            loop_info = self._loop_stack[-1]
+            loop_type = loop_info["type"]
+            # do-while is handled by _handle_while_check, NOT here
+            if loop_type != "do_while":
+                loop_start = loop_info["start_ip"]
+                loop_body_open = self._find_brace_open_after(loop_start + 1)
+                if loop_body_open is not None and loop_body_open in self._brace_map:
+                    if self._brace_map[loop_body_open] == self._ip:
+                        if loop_type == "for":
+                            incr = loop_info.get("incr", "")
+                            if incr:
+                                self._hints.append(f"for 递增: {incr}")
+                                self._execute_inline_stmt(incr)
+                        self._hints.append(
+                            f"{loop_type} 循环体结束，跳回条件检查"
+                        )
+                        return loop_start
+
+        # Check if this closes a switch block
+        if self._switch_active:
+            # Check if this brace_close matches the switch's opening brace
+            for i in range(self._ip - 1, max(self._ip - 50, -1), -1):
+                _, _, st, *_ = self._lines[i] if i < len(self._lines) else ("", "", "skip")
+                if st == "switch_start":
+                    body_open = self._find_brace_open_after(i + 1)
+                    if body_open is not None and body_open in self._brace_map:
+                        if self._brace_map[body_open] == self._ip:
+                            self._switch_active = False
+                            self._case_matched = False
+                            self._switch_value = None
+                            self._hints.append("switch 块结束")
+                    break
+
+        # Check if this closes a function (explicit or implicit return)
+        if self._stack:
+            frame = self._stack[-1]
+            # Check if this } closes the current function's scope
+            # For explicit return, the frame was already popped by _handle_return
+            # For void functions, the } is the implicit return
+            if self._return_stack and frame.name != "main":
+                # Verify this } is not inside a loop by checking brace matching
+                is_fn_end = True
+                if self._loop_stack:
+                    loop = self._loop_stack[-1]
+                    body_open = self._find_brace_open_after(loop["start_ip"] + 1)
+                    if body_open is not None and body_open in self._brace_map:
+                        if self._brace_map[body_open] == self._ip:
+                            is_fn_end = False  # this } closes a loop, not the function
+
+                if is_fn_end:
+                    popped_frame = self._stack.pop()
+                    self._hints.append(f"退出函数 {popped_frame.name}()，栈帧弹出")
+                    ret_addr = self._return_stack.pop()
+                    return ret_addr  # jump back to caller
+
+        return None  # normal advance
 
     # ── 表达式求值 ────────────────────────────────────
     def _eval_expr(self, expr: str) -> int:
         """求值简单表达式"""
         expr = expr.strip()
+        # 一元负号: -expr (v4 fix)
+        if expr.startswith('-') and len(expr) > 1 and expr[1] != ' ':
+            # Only handle unary minus (not subtraction "a - b")
+            rest = expr[1:].strip()
+            if re.match(r'^[a-zA-Z_(\d]', rest):
+                inner_val = self._eval_expr(rest)
+                return -inner_val if isinstance(inner_val, int) else -int(inner_val)
         # 解引用: *p
         deref = re.match(r'\*\s*(\w+)$', expr)
         if deref:
@@ -545,6 +1360,13 @@ class CSimulator:
             if ptr and ptr.points_to:
                 target = self._find_var(ptr.points_to)
                 if target:
+                    # If target is an array, find the element at pointer's offset
+                    if target.elements and isinstance(ptr.value, str) and ptr.value.startswith("0x"):
+                        base = int(target.address, 16)
+                        cur = int(ptr.value, 16)
+                        offset = (cur - base) // 4
+                        if 0 <= offset < len(target.elements):
+                            return target.elements[offset]["value"]
                     return target.value if isinstance(target.value, int) else 0
             return 0
         # 取地址: &x
@@ -574,45 +1396,199 @@ class CSimulator:
             return int(expr)
         except ValueError:
             pass
-        # 简单算术: a + b 或 a - b
-        arith = re.match(r'(\w+)\s*([+\-])\s*(\d+)$', expr)
+        # 简单算术: a + b 或 a - b 或 a + 1 等
+        arith = re.match(r'(\w+)\s*([+\-])\s*(\w+|\d+)$', expr)
         if arith:
             name, op, val = arith.groups()
             base = self._eval_expr(name)
-            return base + int(val) if op == '+' else base - int(val)
+            operand = self._eval_expr(val)
+            return base + operand if op == '+' else base - operand
+
+        # 函数调用: add(3, 4) → inline execute and return result
+        fc_match = re.match(r'(\w+)\(([^)]*)\)$', expr)
+        if fc_match and fc_match.group(1) in self._func_map:
+            return self._eval_func_call(fc_match.group(1), fc_match.group(2))
         return 0
 
-    # ── 状态查询 ──────────────────────────────────────
-    def _get_state(self) -> dict:
-        """返回当前完整状态"""
-        variables = []
+    def _eval_func_call(self, func_name: str, args_str: str) -> int:
+        """Inline execute a function call and return its value.
+        Saves/restores state so step-by-step execution is not affected."""
+        # Save current execution state
+        saved_ip = self._ip
+        saved_stack = list(self._stack)
+        saved_return = list(self._return_stack)
+        saved_loop = list(self._loop_stack)
+        saved_next_addr = self._next_addr
 
-        for frame in self._stack:
-            for name, var in frame.variables.items():
-                entry = {
-                    "name": name,
-                    "type": var.type,
-                    "value": self._fmt_val(var),
-                    "address": var.address,
-                    "frame": frame.name,
-                }
-                if var.type == "int*" and var.points_to:
-                    pts = self._find_var(var.points_to)
-                    if pts:
-                        entry["points_to"] = f"{pts.value} ({var.points_to})"
-                if var.elements:
-                    entry["elements"] = var.elements
-                variables.append(entry)
+        # Find function definition
+        func_start = self._func_map[func_name]
+        _, func_raw, _, func_data = self._lines[func_start]
+        params_str = func_data.get("params", "")
+        param_names = [p.strip().split()[-1].lstrip('*') for p in params_str.split(',') if p.strip()]
+
+        # Create frame and map arguments
+        frame = StackFrame(name=func_name)
+        self._stack.append(frame)
+
+        raw_args = [a.strip() for a in args_str.split(',') if a.strip()]
+        for i, pname in enumerate(param_names):
+            if i < len(raw_args):
+                arg = raw_args[i]
+                val = self._eval_expr(arg)
+                addr = self._alloc_addr()
+                v = Variable(name=pname, type="int", value=val, address=addr)
+                frame.variables[pname] = v
+
+        # Execute function body line by line until return or end
+        result = 0
+        body_ip = func_start + 1
+        brace_depth = 1  # assume function has implicit opening brace
+        _eval_skip_else = False  # flag: if was true → skip else body
+        # Skip past explicit brace_open if present
+        if body_ip < len(self._lines):
+            _, _, st, *_ = self._lines[body_ip]
+            if st == "brace_open":
+                body_ip += 1
+
+        while body_ip < len(self._lines):
+            _, raw, st, *extra = self._lines[body_ip]
+            data = extra[0] if extra else {}
+
+            if st == "func_def":
+                break  # hit another function → end
+            if st == "brace_open":
+                brace_depth += 1
+            elif st == "brace_close":
+                brace_depth -= 1
+                if brace_depth <= 0:
+                    break  # end of function body
+            elif st == "return":
+                s = raw.strip().rstrip(';')
+                m = re.match(r'return\s+(.+)$', s)
+                if m:
+                    result = self._eval_expr(m.group(1))
+                break
+            elif st == "if_start":
+                # Minimal if handling for inline execution
+                cond = data.get("condition", "0")
+                cond_result = self._eval_condition(cond)
+                if cond_result:
+                    # If true: execute body, then skip else (v4 fix)
+                    _eval_skip_else = True
+                else:
+                    # Skip if body (find matching brace_close)
+                    skip_depth = 0
+                    for skip_ip in range(body_ip + 1, len(self._lines)):
+                        _, _, sk_st, *_ = self._lines[skip_ip]
+                        if sk_st == "brace_open":
+                            skip_depth += 1
+                        elif sk_st == "brace_close":
+                            skip_depth -= 1
+                            if skip_depth == 0:
+                                body_ip = skip_ip  # jump to closing }
+                                break
+            elif st == "else_kw" and _eval_skip_else:
+                # If was true — skip the else body (v4 fix)
+                skip_depth = 0
+                for skip_ip in range(body_ip + 1, len(self._lines)):
+                    _, _, sk_st, *_ = self._lines[skip_ip]
+                    if sk_st == "brace_open":
+                        skip_depth += 1
+                    elif sk_st == "brace_close":
+                        skip_depth -= 1
+                        if skip_depth == 0:
+                            body_ip = skip_ip  # jump to closing }
+                            break
+                _eval_skip_else = False
+            if st in ("var_decl_init", "var_decl", "assign", "deref_assign",
+                      "addr_assign", "printf", "if_start", "else_kw"):
+                # Execute simple statements inline
+                if st == "var_decl_init":
+                    s = raw.strip().rstrip(';')
+                    dm = re.match(r'int\s+(\w+)\s*=\s*(.+)$', s)
+                    if dm:
+                        name, expr = dm.groups()
+                        val = self._eval_expr(expr.strip())
+                        addr = self._alloc_addr()
+                        v = Variable(name=name, type="int", value=val, address=addr)
+                        frame.variables[name] = v
+                elif st == "var_decl":
+                    s = raw.strip().rstrip(';')
+                    dm = re.match(r'int\s+(\w+)\s*$', s)
+                    if dm:
+                        name = dm.group(1)
+                        addr = self._alloc_addr()
+                        frame.variables[name] = Variable(name=name, type="int", value=0, address=addr)
+                elif st == "assign":
+                    s = raw.strip().rstrip(';')
+                    am = re.match(r'(\w+)\s*=\s*(.+)$', s)
+                    if am:
+                        name, expr = am.groups()
+                        v = self._find_var(name)
+                        if v:
+                            v.value = self._eval_expr(expr.strip())
+            body_ip += 1
+
+        # Restore state
+        self._ip = saved_ip
+        self._stack = saved_stack
+        self._return_stack = saved_return
+        self._loop_stack = saved_loop
+        self._next_addr = saved_next_addr
+        return result
+
+    # ── 状态查询 ──────────────────────────────────────
+    def _get_state(self, for_history: bool = False) -> dict:
+        """返回当前完整状态。
+
+        for_history=True: strip lines/variables from the snapshot to save
+        memory (history only needs _stack_data for step_back restoration).
+        """
+        variables = []
+        lines = []
+
+        if not for_history:
+            for frame in self._stack:
+                for name, var in frame.variables.items():
+                    entry = {
+                        "name": name,
+                        "type": var.type,
+                        "value": self._fmt_val(var),
+                        "address": var.address,
+                        "frame": frame.name,
+                    }
+                    if var.type == "int*" and var.points_to:
+                        pts = self._find_var(var.points_to)
+                        if pts:
+                            entry["points_to"] = f"{pts.value} ({var.points_to})"
+                    if var.elements:
+                        entry["elements"] = var.elements
+                    variables.append(entry)
+
+            for i, (_, raw, stype, *_) in enumerate(self._lines):
+                if stype not in ("empty", "skip", "brace_open", "brace_close", "unknown"):
+                    lines.append({"num": i + 1, "text": raw, "active": i == self._ip})
 
         # 当前行号
         current_line = 0
         if self._ip < len(self._lines):
             current_line = self._ip + 1
 
-        lines = []
-        for i, (_, raw, stype, *_) in enumerate(self._lines):
-            if stype not in ("empty", "skip", "brace_open", "brace_close", "unknown"):
-                lines.append({"num": i + 1, "text": raw, "active": i == self._ip})
+        # Serialize stack frames for step_back restoration (v4 fix)
+        stack_data = []
+        for frame in self._stack:
+            frame_vars = {}
+            for name, var in frame.variables.items():
+                frame_vars[name] = {
+                    "name": var.name, "type": var.type,
+                    "value": var.value, "address": var.address,
+                    "size": var.size, "elements": var.elements,
+                    "points_to": var.points_to,
+                }
+            stack_data.append({
+                "name": frame.name, "return_line": frame.return_line,
+                "variables": frame_vars,
+            })
 
         return {
             "current_line": current_line,
@@ -626,6 +1602,13 @@ class CSimulator:
             "_next_addr": self._next_addr,
             "_output": self._output,
             "_finished": self._finished,
+            "_loop_stack": list(self._loop_stack),
+            "_else_skip": self._else_skip,
+            "_switch_active": self._switch_active,
+            "_switch_value": self._switch_value,
+            "_case_matched": self._case_matched,
+            "_return_stack": list(self._return_stack),
+            "_stack_data": stack_data,
         }
 
     @staticmethod

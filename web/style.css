@@ -248,6 +248,7 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 .history-menu .h-item:last-child{border-bottom:none}
 .history-menu .h-item .h-code{flex:1;font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5}
 .history-menu .h-item .h-time{flex-shrink:0;font-size:9px;color:var(--text3);white-space:nowrap}
+.history-menu .h-label{padding:6px 14px;font-size:var(--fs-xs);color:var(--accent);font-weight:700;border-bottom:1px solid var(--border)}
 .history-menu .h-empty{padding:16px;font-size:var(--fs-sm);color:var(--text3);text-align:center}
 
 /* ═══════════════════ VISUALIZATION ═══════════════════ */
@@ -325,6 +326,41 @@ textarea:focus-visible{outline-offset:-2px;border-radius:0}
 .toast{position:fixed;bottom:24px;right:24px;z-index:999;padding:12px 24px;border-radius:10px;font-size:var(--fs-md);font-weight:600;color:#fff;animation:toast-in .35s ease}
 @keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .toast.ok{background:var(--green)}.toast.err{background:var(--red)}.toast.warn{background:var(--amber);color:#1a1a2e}
+
+/* ═══════════════════ AUTOCOMPLETE ═══════════════════ */
+#ac-drop{display:none;position:fixed;z-index:300;background:var(--bg-card);border:1px solid var(--accent);border-radius:10px;width:380px;max-height:220px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+#ac-drop.on{display:block}
+.ac-item{padding:9px 14px;cursor:pointer;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--border);font-size:var(--fs-xs);transition:background var(--trans)}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover,.ac-item.cur{background:var(--accent);color:#fff}
+.ac-item:hover b,.ac-item.cur b{color:#fff}
+.ac-item:hover span,.ac-item.cur span{color:rgba(255,255,255,.8)}
+.ac-item b{color:var(--accent);font-family:var(--mono);min-width:55px;font-size:var(--fs-sm)}
+.ac-item span{color:var(--text2);flex:1}
+.ac-item small{color:var(--text3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px;font-size:9px}
+
+/* ═══════════════════ SHORTCUT PANEL ═══════════════════ */
+#shortcut-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center}
+#shortcut-overlay.on{display:flex}
+#shortcut-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:420px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+#shortcut-card h2{font-size:1.2em;margin-bottom:16px;color:var(--text);text-align:center}
+#shortcut-card table{width:100%;border-collapse:collapse}
+#shortcut-card td{padding:7px 10px;border-bottom:1px solid var(--border);font-size:var(--fs-sm)}
+#shortcut-card td:first-child{width:120px}
+#shortcut-card kbd{background:var(--bg-hover);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-family:var(--mono);font-size:10px;color:var(--accent)}
+#shortcut-card td:last-child{color:var(--text2)}
+#shortcut-close{display:block;margin:18px auto 0;padding:8px 28px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:var(--fs-md);font-family:var(--font);transition:all var(--trans)}
+#shortcut-close:hover{background:var(--accent2)}
+
+/* ═══════════════════ ACHIEVEMENTS ═══════════════════ */
+.ach-row{display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap}
+.ach-badge{width:36px;height:36px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid var(--accent);transition:all var(--trans)}
+.ach-badge:hover{transform:scale(1.15);background:var(--accent)}
+
+/* ═══════════════════ DAILY CARD ═══════════════════ */
+.daily-card{background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;padding:12px 16px;margin:12px 0;cursor:pointer;color:#fff;transition:all var(--trans)}
+.daily-card:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.daily-card .daily-badge{font-size:var(--fs-xs);font-weight:700;margin-bottom:4px;opacity:.9}
 
 /* ═══════════════════ SCROLLBAR ═══════════════════ */
 ::-webkit-scrollbar{width:5px;height:5px}

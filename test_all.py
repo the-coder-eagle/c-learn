@@ -301,7 +301,7 @@ class TestServerAPI(unittest.TestCase):
         html = r.get_data(as_text=True)
         self.assertIn("C 语言学习平台", html)
         self.assertIn('<link rel="stylesheet" href="/style.css">', html)
-        self.assertIn('<script src="/app.js"></script>', html)
+        self.assertIn('src="/app.js', html)  # may have ?v= version param
 
     def test_static_css_file(self):
         """style.css 独立文件可访问，包含主题变量和语法高亮配色"""
@@ -322,10 +322,17 @@ class TestServerAPI(unittest.TestCase):
         self.assertIn("saveCodeHistory", js)
         self.assertIn("tokenizeLine", js)  # syntax highlight engine
         self.assertIn("showOnboarding", js)  # onboarding
+        self.assertIn("debouncedHighlight", js)  # v2: debounced highlight
+        self.assertIn("formatCode", js)          # v3: code formatter
+        self.assertIn("showAutocomplete", js)    # v3: autocomplete
+        self.assertIn("checkAchievements", js)   # v3: achievements
+        self.assertIn("exportProgress", js)      # v3: export/import
+        self.assertIn("_historyKey", js)          # v3: per-exercise history
+        self.assertIn("showFreeMode", js)         # v3: free-write mode
 
 
 class TestSimulator(unittest.TestCase):
-    """v9: 模拟器功能测试"""
+    """v9: 模拟器功能测试 (基础 + v2 控制流)"""
 
     def setUp(self):
         from simulator import CSimulator
@@ -357,7 +364,6 @@ int main() {
 
     def test_pointer_deref(self):
         """*p = 10 会修改 a 的值"""
-        # Run to completion
         state = self.sim.run_all()
         self.assertIn("10", state["output"])
         self.assertTrue(state["finished"])
@@ -389,11 +395,311 @@ int main() {
         self.assertIn("pointer_basics", EXAMPLES)
         self.assertIn("function_pointer", EXAMPLES)
         self.assertIn("array_pointer", EXAMPLES)
+        # v2: new control flow examples
+        self.assertIn("if_else", EXAMPLES)
+        self.assertIn("while_loop", EXAMPLES)
+        self.assertIn("for_loop", EXAMPLES)
         from simulator import CSimulator
         for key in EXAMPLES:
             sim = CSimulator(EXAMPLES[key]["code"])
             state = sim._get_state()
             self.assertIsNotNone(state)
+
+    # ── v2 控制流测试 ──────────────────────────────
+
+    def test_if_else_true_branch(self):
+        """if/else — 条件为真时执行 then 分支"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 10;
+    if (a > 5) {
+        printf("big");
+    } else {
+        printf("small");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("big", state["output"])
+        self.assertNotIn("small", state["output"])
+
+    def test_if_else_false_branch(self):
+        """if/else — 条件为假时执行 else 分支"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 3;
+    if (a > 5) {
+        printf("big");
+    } else {
+        printf("small");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("small", state["output"])
+        self.assertNotIn("big", state["output"])
+
+    def test_while_loop(self):
+        """while 循环正确迭代"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int i = 0;
+    while (i < 3) {
+        printf("%d", i);
+        i = i + 1;
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("012", state["output"])
+
+    def test_for_loop(self):
+        """for 循环正确迭代并求和"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int sum = 0;
+    for (int i = 1; i <= 3; i = i + 1) {
+        sum = sum + i;
+    }
+    printf("%d", sum);
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("6", state["output"])
+
+    def test_nested_if(self):
+        """嵌套 if — 内层条件判断正确"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 10;
+    if (a > 5) {
+        if (a > 8) {
+            printf("big");
+        }
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("big", state["output"])
+
+    def test_step_back_after_jump(self):
+        """控制流跳转后 step_back 正确恢复"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int a = 3;
+    if (a > 5) {
+        printf("big");
+    } else {
+        printf("small");
+    }
+    return 0;
+}""")
+        for _ in range(6):
+            sim.step()
+        state_before = sim._get_state()
+        sim.step()
+        state_after = sim._get_state()
+        self.assertNotEqual(state_before["current_line"], state_after["current_line"])
+        back = sim.step_back()
+        self.assertEqual(back["current_line"], state_before["current_line"])
+
+    # ── v3 控制流测试 ──────────────────────────────
+
+    def test_do_while_always_executes_once(self):
+        """do-while 循环体至少执行一次（即使条件为假）"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int i = 5;
+    do {
+        printf("run");
+        i = i + 1;
+    } while (i < 3);
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("run", state["output"])
+
+    def test_break_exits_loop(self):
+        """break 正确跳出 while 循环"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int i = 0;
+    while (i < 10) {
+        i = i + 1;
+        if (i == 3) {
+            break;
+        }
+        printf("%d", i);
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        # Should print 1 and 2, then break before printing 3
+        self.assertIn("1", state["output"])
+        self.assertIn("2", state["output"])
+        self.assertNotIn("3", state["output"])
+
+    def test_continue_skips_iteration(self):
+        """continue 跳过当前迭代"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int i = 0;
+    while (i < 5) {
+        i = i + 1;
+        if (i == 3) {
+            continue;
+        }
+        printf("%d", i);
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("1", state["output"])
+        self.assertIn("2", state["output"])
+        self.assertIn("4", state["output"])
+        self.assertIn("5", state["output"])
+        self.assertNotIn("3", state["output"])
+
+    def test_switch_case_matching(self):
+        """switch/case 正确匹配并执行对应分支"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int x = 2;
+    switch (x) {
+        case 1:
+            printf("one");
+            break;
+        case 2:
+            printf("two");
+            break;
+        case 3:
+            printf("three");
+            break;
+        default:
+            printf("other");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("two", state["output"])
+        self.assertNotIn("one", state["output"])
+        self.assertNotIn("three", state["output"])
+
+    def test_switch_default_fallback(self):
+        """switch 无匹配时进入 default"""
+        from simulator import CSimulator
+        sim = CSimulator("""#include <stdio.h>
+int main() {
+    int x = 99;
+    switch (x) {
+        case 1:
+            printf("one");
+            break;
+        default:
+            printf("other");
+    }
+    return 0;
+}""")
+        state = sim.run_all()
+        self.assertIn("other", state["output"])
+
+
+class TestSecurityRegex(unittest.TestCase):
+    """v2: 安全扫描器 — 正则词边界测试"""
+
+    def test_word_boundary_systematic(self):
+        """'systematic' 不应触发 system( 拦截（词边界保护）"""
+        ok, _ = _scan_source('int systematic = 1;', strict=True)
+        self.assertTrue(ok, "'systematic' should NOT be blocked by word boundary")
+
+    def test_actual_system_call_blocked(self):
+        """'system(\"rm\")' 应被拦截"""
+        ok, msg = _scan_source('system("rm -rf /");', strict=True)
+        self.assertFalse(ok)
+        self.assertIn("system(", msg)
+
+    def test_asm_keyword_blocked(self):
+        """__asm 应被严格/宽松模式拦截"""
+        ok, _ = _scan_source("__asm { mov eax, 1 }", strict=True)
+        self.assertFalse(ok)
+        ok2, _ = _scan_source("__asm { mov eax, 1 }", strict=False)
+        self.assertFalse(ok2)
+
+    def test_syscall_blocked(self):
+        """syscall() 原始系统调用应被拦截"""
+        ok, _ = _scan_source("syscall(59, ...);", strict=True)
+        self.assertFalse(ok)
+
+    def test_normal_code_still_works(self):
+        """正常 C 代码在各种扫描模式下都能通过"""
+        normal = '#include <stdio.h>\nint main() {\n    printf("assembly language is fun");\n    return 0;\n}'
+        ok, _ = _scan_source(normal, strict=True)
+        self.assertTrue(ok)
+        ok2, _ = _scan_source(normal, strict=False)
+        self.assertTrue(ok2)
+
+
+class TestConfig(unittest.TestCase):
+    """v2: 配置系统测试"""
+
+    def test_config_defaults(self):
+        """配置默认值存在且合理"""
+        from services import CONFIG
+        self.assertGreater(CONFIG["compile_timeout"], 0)
+        self.assertGreater(CONFIG["run_timeout"], 0)
+        self.assertGreater(CONFIG["free_run_timeout"], 0)
+        self.assertGreater(CONFIG["max_stdout"], 0)
+        self.assertGreater(CONFIG["max_stderr"], 0)
+        self.assertFalse(CONFIG["strict_free_play"])  # default off
+
+
+class TestVizExamplesAPI(unittest.TestCase):
+    """v2: 可视化示例 API 测试"""
+
+    @classmethod
+    def setUpClass(cls):
+        from server import app
+        cls.client = app.test_client()
+
+    def test_all_9_examples_listed(self):
+        """9 个示例全部在列表中"""
+        r = self.client.get("/api/sim/examples")
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertEqual(len(data), 9)
+        ids = [e["id"] for e in data]
+        for expected in ["pointer_basics", "function_pointer", "array_pointer",
+                         "if_else", "while_loop", "for_loop",
+                         "do_while", "break_continue", "switch_case"]:
+            self.assertIn(expected, ids, f"Example {expected} missing from list")
+
+    def test_if_else_example_loads(self):
+        """if/else 示例可加载"""
+        r = self.client.get("/api/sim/example/if_else")
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertIn("title", data)
+        self.assertEqual(data["title"], "例4 - if/else 条件判断")
+
+    def test_while_loop_example_loads(self):
+        """while 循环示例可加载"""
+        r = self.client.get("/api/sim/example/while_loop")
+        self.assertEqual(r.status_code, 200)
+
+    def test_for_loop_example_loads(self):
+        """for 循环示例可加载"""
+        r = self.client.get("/api/sim/example/for_loop")
+        self.assertEqual(r.status_code, 200)
 
 
 if __name__ == "__main__":

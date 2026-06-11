@@ -57,7 +57,32 @@ def _tcc_exe() -> Optional[str]:
     return None
 
 def _content_dir() -> Path:
+    """Get the content directory, respecting CLEARN_CONTENT_DIR env var."""
+    custom = os.environ.get("CLEARN_CONTENT_DIR", "").strip()
+    if custom:
+        return Path(custom)
     return _base_dir() / "content"
+
+# ── Configuration ────────────────────────────────────────────────────
+# Load .env file if present (python-dotenv is optional)
+try:
+    from dotenv import load_dotenv
+    _env_path = _base_dir() / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass  # python-dotenv not installed — use os.environ directly
+
+# All config values with sensible defaults
+CONFIG = {
+    "compile_timeout": int(os.environ.get("CLEARN_COMPILE_TIMEOUT", "15")),
+    "run_timeout": int(os.environ.get("CLEARN_RUN_TIMEOUT", "5")),
+    "free_run_timeout": int(os.environ.get("CLEARN_FREE_RUN_TIMEOUT", "10")),
+    "max_stdout": int(os.environ.get("CLEARN_MAX_STDOUT", "10000")),
+    "max_stderr": int(os.environ.get("CLEARN_MAX_STDERR", "5000")),
+    "strict_free_play": os.environ.get("CLEARN_STRICT_FREE_PLAY", "") == "1",
+}
+_PER_CASE_TIMEOUT = CONFIG["run_timeout"]
 
 # ── Compile result ────────────────────────────────────────────────
 
@@ -96,16 +121,21 @@ class JudgeResult:
 
 # Strict scan for exercise submission — blocks dangerous syscalls
 _FORBIDDEN_STRICT = [
-    "system(", "popen(", "exec(", "fork(", "CreateProcess",
-    "WinExec", "ShellExecute", "socket(", "connect(",
-    "__asm", "__asm__", "#include <winsock",
+    r"\bsystem\s*\(", r"\bpopen\s*\(", r"\bexec[lvpe]*\s*\(", r"\bfork\s*\(",
+    r"\bCreateProcess\b", r"\bWinExec\b", r"\bShellExecute\b",
+    r"\bsocket\s*\(", r"\bconnect\s*\(",
+    r"\b__asm\b", r"\b__asm__\b",
+    r"#include\s*<winsock",
+    r"#include\s*<winsock2",
+    r"\bsyscall\s*\(",    # raw syscall — bypasses all wrappers
+    r"\b__builtin_",      # compiler builtins that can escape sandbox
 ]
 
 # Relaxed scan for free play — only blocks truly destructive ops
 # NOTE: fopen/remove/fwrite are NOT blocked — they're needed for file I/O exercises
 _FORBIDDEN_RELAXED = [
-    "system(", "CreateProcess", "WinExec", "ShellExecute",
-    "__asm", "__asm__",
+    r"\bsystem\s*\(", r"\bCreateProcess\b", r"\bWinExec\b", r"\bShellExecute\b",
+    r"\b__asm\b", r"\b__asm__\b", r"\bsyscall\s*\(",
 ]
 
 # Windows: suppress console window for subprocess calls
@@ -127,22 +157,32 @@ def _subprocess_kwargs(**extra):
     return kw
 
 def _scan_source(source: str, strict: bool = False) -> tuple[bool, str]:
-    """Security scan. strict=True for exercise submission, False for free play."""
+    """Security scan. strict=True for exercise submission, False for free play.
+
+    Uses regex patterns for precise matching (word boundaries prevent false positives
+    like 'systematic' triggering the 'system(' block).
+    """
     lower = source.lower()
-    keywords = _FORBIDDEN_STRICT if strict else _FORBIDDEN_RELAXED
+    patterns = _FORBIDDEN_STRICT if strict else _FORBIDDEN_RELAXED
+
+    # Honor CLEARN_STRICT_FREE_PLAY env override
+    if not strict and CONFIG.get("strict_free_play", False):
+        patterns = _FORBIDDEN_STRICT
+
     blocks = []
-    for kw in keywords:
-        if kw.lower() in lower:
-            blocks.append(kw)
+    for pat in patterns:
+        if re.search(pat, lower):
+            # Extract a human-readable label from the pattern
+            label = pat.replace(r"\b", "").replace(r"\s*\(", "(").replace(r"\s*<", " <")
+            blocks.append(label)
+
     if blocks:
         return False, f"Code blocked: {', '.join(blocks[:3])} not allowed in this context."
     return True, ""
 
 # ── Compilation ───────────────────────────────────────────────────
 
-_PER_CASE_TIMEOUT = 5  # seconds per test case
-
-def compile_and_run(source_code: str, stdin: str = "", timeout: int = 10) -> CompileResult:
+def compile_and_run(source_code: str, stdin: str = "", timeout: int = None) -> CompileResult:
     """
     Compile C code with TCC and run it. Returns CompileResult.
     Runs synchronously — call from a background thread to keep UI responsive.
@@ -150,6 +190,9 @@ def compile_and_run(source_code: str, stdin: str = "", timeout: int = 10) -> Com
     safe, msg = _scan_source(source_code, strict=False)  # relaxed for free play
     if not safe:
         return CompileResult(success=False, compile_error=msg)
+
+    if timeout is None:
+        timeout = CONFIG["free_run_timeout"]
 
     tcc = _tcc_exe()
     if not tcc:
@@ -179,7 +222,7 @@ def compile_and_run(source_code: str, stdin: str = "", timeout: int = 10) -> Com
             **_subprocess_kwargs(),
         )
 
-        raw_stderr = compile_proc.stderr[:5000] if compile_proc.stderr else ""
+        raw_stderr = compile_proc.stderr[: CONFIG["max_stderr"]] if compile_proc.stderr else ""
         clean_stderr = re.sub(
             r'[A-Z]:[^\s]*?/main\.c:\d+: ',
             '',
@@ -206,8 +249,8 @@ def compile_and_run(source_code: str, stdin: str = "", timeout: int = 10) -> Com
             **_subprocess_kwargs(),
         )
         elapsed_ms = int((time.time() - t0) * 1000)
-        stdout = run_proc.stdout[:10000] if run_proc.stdout else ""
-        stderr_out = run_proc.stderr[:5000] if run_proc.stderr else ""
+        stdout = run_proc.stdout[: CONFIG["max_stdout"]] if run_proc.stdout else ""
+        stderr_out = run_proc.stderr[: CONFIG["max_stderr"]] if run_proc.stderr else ""
 
         error_lines = _parse_error_lines(stderr_out) if run_proc.returncode != 0 else []
 
@@ -239,8 +282,11 @@ def compile_and_run(source_code: str, stdin: str = "", timeout: int = 10) -> Com
 def compile_only(source_code: str, strict: bool = True) -> tuple[bool, str, str]:
     """
     Compile to a temp binary. Returns (success, binary_path, error_message).
+
+    The caller owns the tmpdir on success and MUST clean it up after running
+    the binary. On failure, tmpdir is cleaned up before returning.
     """
-    safe, msg = _scan_source(source_code, strict=strict)  # strict for submission, relaxed for free play
+    safe, msg = _scan_source(source_code, strict=strict)
     if not safe:
         return False, "", msg
 
@@ -249,35 +295,35 @@ def compile_only(source_code: str, strict: bool = True) -> tuple[bool, str, str]
         return False, "", "TCC compiler not found"
 
     tmpdir = tempfile.mkdtemp(prefix="clearn_")
-    ext = ".exe" if os.name == "nt" else ".out"
-    binary = str(Path(tmpdir) / f"a{ext}")
-    src = Path(tmpdir) / "main.c"
-    src.write_text(source_code, encoding="utf-8")
-
+    success = False
     try:
+        ext = ".exe" if os.name == "nt" else ".out"
+        binary = str(Path(tmpdir) / f"a{ext}")
+        src = Path(tmpdir) / "main.c"
+        src.write_text(source_code, encoding="utf-8")
+
         proc = subprocess.run(
             [tcc, "-std=c11", "-o", binary, str(src)],
             capture_output=True,
-            timeout=15,
+            timeout=CONFIG["compile_timeout"],
             text=True,
             **_subprocess_kwargs(),
         )
         if proc.returncode != 0:
-            raw = proc.stderr[:5000] if proc.stderr else ""
+            raw = proc.stderr[: CONFIG["max_stderr"]] if proc.stderr else ""
             clean = re.sub(r'[A-Z]:[^\s]*?/main\.c:\d+: ', '', raw).strip()
-            # Clean up on failure
-            import shutil
-            shutil.rmtree(tmpdir, ignore_errors=True)
-            return False, "", _translate_error(clean or f"Compilation failed")
+            return False, "", _translate_error(clean or "Compilation failed")
+
+        success = True
         return True, binary, ""
     except subprocess.TimeoutExpired:
-        import shutil
-        shutil.rmtree(tmpdir, ignore_errors=True)
         return False, "", "Compilation timed out"
     except Exception as e:
-        import shutil
-        shutil.rmtree(tmpdir, ignore_errors=True)
-        return False, "", str(e)
+        return False, "", f"Compilation error: {str(e)}"
+    finally:
+        if not success:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def run_binary(binary_path: str, stdin: str = "", timeout: int = _PER_CASE_TIMEOUT) -> CompileResult:
@@ -295,8 +341,8 @@ def run_binary(binary_path: str, stdin: str = "", timeout: int = _PER_CASE_TIMEO
         elapsed_ms = int((time.time() - t0) * 1000)
         return CompileResult(
             success=(proc.returncode == 0),
-            stdout=proc.stdout[:10000] if proc.stdout else "",
-            stderr=proc.stderr[:5000] if proc.stderr else "",
+            stdout=proc.stdout[: CONFIG["max_stdout"]] if proc.stdout else "",
+            stderr=proc.stderr[: CONFIG["max_stderr"]] if proc.stderr else "",
             exit_code=proc.returncode or 0,
             wall_time_ms=elapsed_ms,
         )
@@ -459,24 +505,52 @@ def judge(source_code: str, test_cases: list[dict], timeout: int = _PER_CASE_TIM
 # ── Error message translation ─────────────────────────────────────
 
 def _translate_error(raw: str) -> str:
-    """Make compiler errors student-friendly with Chinese hints."""
+    """Make compiler errors student-friendly with bilingual hints (ZH + EN fallback)."""
     msg = raw.strip()
     if not msg:
         return "Unknown compilation error"
 
-    # Add Chinese-friendly hints
+    # Detect system language preference from environment
+    _lang = os.environ.get("CLEARN_LANG", "")
+    if not _lang:
+        # Simple heuristic: check LANG env or default to bilingual
+        _lang = os.environ.get("LANG", "zh")
+
+    is_zh = _lang.startswith("zh") or _lang.startswith("zh_CN")
+
+    # Build hints — always include English, add Chinese when appropriate
     hints = []
     lower = msg.lower()
+
     if 'undeclared' in lower or 'undefined' in lower:
-        hints.append("提示：变量或函数未声明。检查拼写错误或是否缺少 #include。")
+        if is_zh:
+            hints.append("提示：变量或函数未声明。检查拼写错误或是否缺少 #include。")
+        hints.append("Hint: variable or function not declared. Check for typos or missing #include.")
+
     if 'expected' in lower and (';' in msg or '}' in msg or '{' in msg):
-        hints.append("提示：缺少分号(;)或花括号({})。")
+        if is_zh:
+            hints.append("提示：缺少分号(;)或花括号({})。")
+        hints.append("Hint: missing semicolon (;) or brace ({}).")
+
     if 'implicit' in lower:
-        hints.append("提示：函数使用前需要先声明或定义。")
+        if is_zh:
+            hints.append("提示：函数使用前需要先声明或定义。")
+        hints.append("Hint: function must be declared or defined before use.")
+
     if "unknown type name" in lower:
-        hints.append("提示：未知类型名。检查是否拼写正确，或是否包含了对应的头文件。")
+        if is_zh:
+            hints.append("提示：未知类型名。检查是否拼写正确，或是否包含了对应的头文件。")
+        hints.append("Hint: unknown type name. Check spelling or missing #include.")
+
     if "assignment" in lower and "cast" in lower:
-        hints.append("提示：类型不匹配。赋值时左右两边类型需要兼容。")
+        if is_zh:
+            hints.append("提示：类型不匹配。赋值时左右两边类型需要兼容。")
+        hints.append("Hint: type mismatch. Both sides of assignment need compatible types.")
+
+    if "undefined reference" in lower:
+        if is_zh:
+            hints.append("提示：未定义的引用。是否忘记链接库，或函数名拼写错误？")
+        hints.append("Hint: undefined reference. Did you forget to link a library or misspell a function name?")
 
     if hints:
         return msg + "\n\n" + "\n".join(hints)
@@ -608,18 +682,18 @@ class InteractiveRunner:
             return {"status": "error", "error": str(e)}
 
     def _reader(self, pipe, pipe_type: str):
-        """Read raw bytes one at a time and push to buffer.
+        """Read output from the subprocess pipe in chunks.
 
-        On Windows pipes, read(256) blocks until the requested size is
-        available — but read(1) returns immediately when any data arrives.
-        This is critical for real-time interactive I/O.
+        Uses a blocking read loop — on Windows, PIPE reads return as soon
+        as any data is available (unlike file reads). Using larger chunk
+        sizes reduces system call overhead while maintaining responsiveness.
         """
         try:
             while True:
-                byte = pipe.read(1)  # 1-byte reads — never blocks on Windows pipes
-                if not byte:  # EOF
+                chunk = pipe.read(256)  # 256-byte chunks — responsive + efficient
+                if not chunk:  # EOF
                     break
-                text = byte.decode('utf-8', errors='replace')
+                text = chunk.decode('utf-8', errors='replace')
                 with self._output_lock:
                     self._output_lines.append({"type": pipe_type, "text": text})
         except (ValueError, OSError):
